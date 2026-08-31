@@ -1,0 +1,23 @@
+[package]
+name = "optiscaler-manager"
+description = "Desktop app to catalog installed games and manage OptiScaler in them."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "optiscaler-manager"
+path = "src/main.rs"
+
+[dependencies]
+opti-core.workspace = true
+
+gpui.workspace = true
+gpui-component.workspace = true
+gpui-component-assets.workspace = true
+
+anyhow.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+env_logger = "0.11.11"
