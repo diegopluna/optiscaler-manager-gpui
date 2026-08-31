@@ -3,7 +3,7 @@ use gpui::{
     Subscription, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Sizable,
+    ActiveTheme, Disableable, Sizable,
     button::{Button, ButtonVariants},
     divider::Divider,
     h_flex,
@@ -11,7 +11,7 @@ use gpui_component::{
     v_flex,
 };
 
-use crate::app_state::AppState;
+use crate::app_state::{AppState, UpdateState};
 
 /// Application settings: the SteamGridDB key used for cover art on non-Steam
 /// games, plus the on-disk locations the app uses.
@@ -119,6 +119,90 @@ impl Render for SettingsView {
                             }),
                     ),
             )
+            .child(Divider::horizontal())
+            .child({
+                let update = self.state.read(cx).update.clone();
+                let busy = update.is_busy();
+                v_flex()
+                    .gap_2()
+                    .child(div().text_sm().child("Updates"))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!(
+                                "This is version {}.",
+                                opti_core::update::CURRENT_VERSION
+                            )),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Button::new("check-updates")
+                                    .small()
+                                    .outline()
+                                    .label(match &update {
+                                        UpdateState::Checking => "Checking…",
+                                        UpdateState::Downloading => "Updating…",
+                                        _ => "Check for updates",
+                                    })
+                                    .disabled(busy)
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        this.state
+                                            .update(cx, |state, cx| state.check_for_updates(cx));
+                                    })),
+                            )
+                            .when_some(
+                                match &update {
+                                    UpdateState::Available(info) => Some(info.tag.clone()),
+                                    _ => None,
+                                },
+                                |this, tag| {
+                                    this.child(
+                                        Button::new("apply-update")
+                                            .small()
+                                            .primary()
+                                            .label(format!("Update to {tag}"))
+                                            .disabled(busy)
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, _, cx| {
+                                                    this.state.update(cx, |state, cx| {
+                                                        state.apply_update(cx)
+                                                    });
+                                                },
+                                            )),
+                                    )
+                                },
+                            )
+                            .when_some(
+                                match &update {
+                                    UpdateState::UpToDate => {
+                                        Some(("Up to date".to_string(), false))
+                                    }
+                                    UpdateState::RestartRequired => Some((
+                                        "Updated — restart the app to finish".to_string(),
+                                        false,
+                                    )),
+                                    UpdateState::Failed(err) => Some((err.clone(), true)),
+                                    _ => None,
+                                },
+                                |this, (message, is_error)| {
+                                    this.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(if is_error {
+                                                cx.theme().danger
+                                            } else {
+                                                cx.theme().success
+                                            })
+                                            .child(message),
+                                    )
+                                },
+                            ),
+                    )
+            })
             .child(Divider::horizontal())
             .child(
                 v_flex()

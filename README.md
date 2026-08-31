@@ -41,12 +41,18 @@ primary target; Linux is supported and macOS runs for development.
 
 ## Download
 
-Prebuilt binaries for Windows and Linux are attached to each
-[release](https://github.com/diegopluna/optiscaler-manager-gpui/releases).
-Unpack and run `optiscaler-manager`; there is nothing to install.
+Grab the latest [release](https://github.com/diegopluna/optiscaler-manager-gpui/releases):
 
-Linux builds are made on Ubuntu 22.04 and need a Vulkan driver plus the usual
-X11/Wayland client libraries, which a desktop system will already have.
+- **Windows**: run the `…-setup.exe` installer. It installs per-user (no
+  admin prompt) with a Start Menu entry and uninstaller. A portable `.zip`
+  is also attached, but only installer installs can self-update.
+- **Linux**: unpack the `.tar.gz` and run `optiscaler-manager`. Builds are
+  made on Ubuntu 22.04 and need a Vulkan driver plus the usual X11/Wayland
+  client libraries, which a desktop system will already have.
+
+Once installed, Settings → Check for updates fetches new versions in place:
+on Windows the app downloads the new installer and hands over to it, on
+Linux the binary is swapped and takes effect on the next launch.
 
 ## Building it
 

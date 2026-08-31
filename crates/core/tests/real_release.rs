@@ -132,3 +132,13 @@ fn installs_optipatcher_into_a_managed_install() {
     );
     assert!(!game.path().join("plugins").exists());
 }
+
+#[test]
+#[ignore = "network: queries this app's own releases"]
+fn update_check_reaches_github() {
+    let result = opti_core::update::check().expect("update check should parse");
+    println!(
+        "current {} -> {result:?}",
+        opti_core::update::CURRENT_VERSION
+    );
+}

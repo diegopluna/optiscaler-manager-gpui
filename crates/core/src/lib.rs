@@ -11,6 +11,7 @@ pub mod optiscaler;
 pub mod paths;
 pub mod settings;
 pub mod text;
+pub mod update;
 pub mod vdf;
 
 pub use detect::detect_all;

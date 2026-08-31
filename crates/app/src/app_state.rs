@@ -4,11 +4,31 @@ use std::path::{Path, PathBuf};
 use gpui::{App, AppContext, Context, Entity};
 use opti_core::anticheat::Detection;
 use opti_core::optiscaler::{InstallStatus, Release, install as installer};
+use opti_core::update::{Applied, UpdateCheck, UpdateInfo};
 use opti_core::{Game, GameId, Settings};
 
 /// How many covers to download at once. Enough to keep the grid filling in
 /// quickly without hammering the CDN.
 const ARTWORK_LANES: usize = 4;
+
+/// Where the self-update flow currently stands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateState {
+    Idle,
+    Checking,
+    UpToDate,
+    Available(UpdateInfo),
+    Downloading,
+    /// The new binary is in place; it runs on the next launch.
+    RestartRequired,
+    Failed(String),
+}
+
+impl UpdateState {
+    pub fn is_busy(&self) -> bool {
+        matches!(self, UpdateState::Checking | UpdateState::Downloading)
+    }
+}
 
 /// Where the library scan currently stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +92,7 @@ pub struct AppState {
     statuses: HashMap<GameId, GameStatus>,
     /// Lowercase executable names OptiPatcher supports, once fetched.
     optipatcher_exes: Option<Vec<String>>,
+    pub update: UpdateState,
     /// Release tag the user picked per game; absent means "use the newest".
     selected_release: HashMap<GameId, String>,
 }
@@ -88,6 +109,7 @@ impl AppState {
             statuses: HashMap::new(),
             selected_release: HashMap::new(),
             optipatcher_exes: None,
+            update: UpdateState::Idle,
         };
         this.rescan(cx);
         this.refresh_releases(cx);
@@ -478,6 +500,66 @@ impl AppState {
                             status.error = Some(format!("{err:#}"));
                         }
                     }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Asks GitHub whether a newer release of this app exists.
+    pub fn check_for_updates(&mut self, cx: &mut Context<Self>) {
+        if self.update.is_busy() {
+            return;
+        }
+        self.update = UpdateState::Checking;
+        cx.notify();
+
+        let check = cx.background_spawn(async move { opti_core::update::check() });
+
+        cx.spawn(async move |this, cx| {
+            let result = check.await;
+            this.update(cx, |this, cx| {
+                this.update = match result {
+                    Ok(UpdateCheck::UpToDate) => UpdateState::UpToDate,
+                    Ok(UpdateCheck::Available(info)) => {
+                        log::info!("update available: {}", info.tag);
+                        UpdateState::Available(info)
+                    }
+                    Err(err) => UpdateState::Failed(format!("{err:#}")),
+                };
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Downloads and applies the update found by [`Self::check_for_updates`].
+    /// On Windows this launches the new installer and quits the app so the
+    /// installer can replace it; on Linux the binary is swapped in place.
+    pub fn apply_update(&mut self, cx: &mut Context<Self>) {
+        let UpdateState::Available(info) = self.update.clone() else {
+            return;
+        };
+        self.update = UpdateState::Downloading;
+        cx.notify();
+
+        let work = cx.background_spawn(async move { opti_core::update::apply(&info, |_, _| {}) });
+
+        cx.spawn(async move |this, cx| {
+            let result = work.await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(Applied::InstallerLaunched) => {
+                        log::info!("installer launched; quitting so it can replace the app");
+                        cx.quit();
+                    }
+                    Ok(Applied::RestartRequired) => {
+                        this.update = UpdateState::RestartRequired;
+                    }
+                    Err(err) => this.update = UpdateState::Failed(format!("{err:#}")),
                 }
                 cx.notify();
             })

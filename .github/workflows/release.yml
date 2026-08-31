@@ -16,8 +16,26 @@ permissions:
   contents: write
 
 jobs:
+  preflight:
+    name: Check tag matches crate version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Compare versions
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "Tag $TAG does not match workspace version $VERSION."
+            echo "The in-app updater compares these; bump Cargo.toml first."
+            exit 1
+          fi
+
   build:
     name: Build ${{ matrix.name }}
+    needs: preflight
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -79,12 +97,28 @@ jobs:
           if (Test-Path LICENSE) { Copy-Item LICENSE $stage }
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
 
+      - name: Build installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.tag || github.ref_name }}"
+          $bare = $version.TrimStart('v')
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc `
+            /DAppVersion=$bare `
+            /DExeSource="$PWD\target\release\${{ matrix.binary }}" `
+            /DOutputName="optiscaler-manager-$version-${{ matrix.name }}-setup" `
+            /O"$PWD" `
+            packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: |
             *.tar.gz
             *.zip
+            *-setup.exe
           if-no-files-found: error
 
   publish:

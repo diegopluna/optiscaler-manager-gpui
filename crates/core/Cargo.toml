@@ -18,6 +18,8 @@ quick-xml = "0.42"
 ureq = { version = "3.4", features = ["json"] }
 sevenz-rust2 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+flate2 = "1"
+tar = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.5"
