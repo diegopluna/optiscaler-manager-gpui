@@ -385,28 +385,165 @@ impl gpui::Render for GameDetail {
                             ),
                     ),
             )
-            .child(
-                crate::views::ui::section("Install directory", cx)
+            .child({
+                // Left-hand field labels, per the canvas's 130px label column.
+                let label_color = cx.theme().secondary_foreground;
+                let flabel = move |text: &'static str| {
+                    div()
+                        .w(px(130.))
+                        .flex_shrink_0()
+                        .text_sm()
+                        .text_color(label_color)
+                        .child(text)
+                };
+                crate::views::ui::section("Installation", cx)
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(flabel("Version"))
+                            .children(
+                                self.version_select
+                                    .as_ref()
+                                    .map(|state| Select::new(state).small().w(px(220.))),
+                            )
+                            .when(!selected_published.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(crate::theme::tokens::faint_text())
+                                        .child(format!("released {selected_published}")),
+                                )
+                            }),
+                    )
+                    .when(!selected_notes.is_empty(), |this| {
+                        this.child(
+                            h_flex()
+                                .gap_2()
+                                .items_start()
+                                .child(flabel("What's new").pt_2())
+                                .child(
+                                    v_flex()
+                                        .id("changelog")
+                                        .p_3()
+                                        .gap_1()
+                                        .max_h(px(170.))
+                                        .flex_1()
+                                        .overflow_hidden()
+                                        .rounded(px(10.))
+                                        .border_1()
+                                        .border_color(crate::theme::tokens::card_border())
+                                        .bg(crate::theme::tokens::inner_bg())
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .child(format!("What's new in {selected_tag}")),
+                                        )
+                                        .children(selected_notes.iter().map(|line| {
+                                            use opti_core::text::NoteLine;
+                                            match line {
+                                                NoteLine::Heading { level, text } => div()
+                                                    .pt_1()
+                                                    .text_sm()
+                                                    .font_weight(if *level <= 2 {
+                                                        gpui::FontWeight::SEMIBOLD
+                                                    } else {
+                                                        gpui::FontWeight::MEDIUM
+                                                    })
+                                                    .text_color(cx.theme().foreground)
+                                                    .child(text.clone())
+                                                    .into_any_element(),
+                                                NoteLine::Bullet { indent, text } => h_flex()
+                                                    .gap_1p5()
+                                                    .items_start()
+                                                    .pl(px(8. + *indent as f32 * 14.))
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(cx.theme().primary)
+                                                            .child("•"),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_xs()
+                                                            .flex_1()
+                                                            .text_color(
+                                                                cx.theme().muted_foreground,
+                                                            )
+                                                            .child(text.clone()),
+                                                    )
+                                                    .into_any_element(),
+                                                NoteLine::Text(text) => div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child(text.clone())
+                                                    .into_any_element(),
+                                                // Paragraph separator.
+                                                NoteLine::Blank => {
+                                                    div().h(px(6.)).into_any_element()
+                                                }
+                                            }
+                                        }))
+                                        .overflow_y_scrollbar(),
+                                ),
+                        )
+                    })
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_start()
+                            .child(flabel("Load as").pt_1())
                             .child(
-                                "Detected automatically. Change it if OptiScaler belongs \
-                                 next to a different executable.",
+                                v_flex()
+                                    .gap_1()
+                                    .flex_1()
+                                    .child(
+                                        ButtonGroup::new("proxy-name")
+                                            .outline()
+                                            .compact()
+                                            .disabled(is_managed || busy.is_some())
+                                            .children(PROXY_DLL_NAMES.iter().enumerate().map(
+                                                |(ix, name)| {
+                                                    Button::new(("proxy", ix))
+                                                        .label(*name)
+                                                        .selected(ix == selected_proxy)
+                                                },
+                                            ))
+                                            .on_click(cx.listener(
+                                                |this, clicks: &Vec<usize>, _, cx| {
+                                                    let Some(&ix) = clicks.first() else {
+                                                        return;
+                                                    };
+                                                    let Some(name) = PROXY_DLL_NAMES.get(ix)
+                                                    else {
+                                                        return;
+                                                    };
+                                                    let id = this.game_id.clone();
+                                                    this.state.update(cx, |state, cx| {
+                                                        state.set_proxy_name(&id, name, cx)
+                                                    });
+                                                },
+                                            )),
+                                    )
+                                    .child(crate::views::ui::hint(
+                                        "The DLL name the game loads. dxgi.dll suits most \
+                                         games; switch if the game already ships one.",
+                                        cx,
+                                    )),
                             ),
                     )
                     .children(self.dir_input.as_ref().map(|input| {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .pt_1()
+                            .child(flabel("Directory"))
                             .child(Input::new(input).small().flex_1())
                             .child(
                                 Button::new("apply-dir")
                                     .small()
                                     .outline()
-                                    .label("Apply")
+                                    .label("Change")
                                     .disabled(is_managed)
                                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                                         this.apply_dir_override(cx);
@@ -422,317 +559,293 @@ impl gpui::Render for GameDetail {
                                         this.open_target_dir(cx);
                                     })),
                             )
-                    })),
-            )
-            .child(
-                crate::views::ui::section("Load OptiScaler as", cx)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(
-                                "The DLL name the game loads. dxgi.dll suits most games; \
-                                 switch if the game already ships one.",
-                            ),
-                    )
-                    .child(
-                        ButtonGroup::new("proxy-name")
-                            .outline()
-                            .compact()
-                            .disabled(is_managed || busy.is_some())
-                            .children(PROXY_DLL_NAMES.iter().enumerate().map(|(ix, name)| {
-                                Button::new(("proxy", ix))
-                                    .label(*name)
-                                    .selected(ix == selected_proxy)
-                            }))
-                            .on_click(cx.listener(|this, clicks: &Vec<usize>, _, cx| {
-                                let Some(&ix) = clicks.first() else { return };
-                                let Some(name) = PROXY_DLL_NAMES.get(ix) else {
-                                    return;
-                                };
-                                let id = this.game_id.clone();
-                                this.state
-                                    .update(cx, |state, cx| state.set_proxy_name(&id, name, cx));
-                            })),
-                    ),
-            )
-            .child(
-                crate::views::ui::section("What this game ships", cx)
-                    .map(|this| {
-                        if upscaler_techs.is_empty() {
-                            this.child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().warning)
-                                    .child(
-                                        "No upscaler DLLs found in this game. OptiScaler \
-                                         hooks a game's existing DLSS/FSR/XeSS inputs, so it \
-                                         will most likely do nothing here.",
-                                    ),
-                            )
-                        } else {
-                            let labels = upscaler_techs
-                                .iter()
-                                .map(|tech| tech.label())
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            this.child(div().text_sm().child(format!(
-                                "Ships {labels} — OptiScaler has inputs to hook."
-                            )))
-                            .children(upscaler_files.iter().take(4).map(|detection| {
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!(
-                                        "{}: {}",
-                                        detection.tech.label(),
-                                        detection.file.display()
-                                    ))
-                            }))
-                        }
-                    }),
-            )
-            .when_some(gpu, |this, gpu| {
-                let needs_spoofing = gpu.vendor.needs_spoofing();
-                this.child(
-                    crate::views::ui::section(format!("GPU: {gpu}"), cx)
-                        .map(|this| {
-                            if needs_spoofing {
-                                this.child(
-                                    h_flex()
-                                        .gap_2()
-                                        .items_center()
-                                        .child(
-                                            Switch::new("dlss-inputs")
-                                                .label("Use DLSS inputs (spoofs an Nvidia GPU)")
-                                                .checked(dlss_inputs)
-                                                .on_click(cx.listener(
-                                                    |this, checked: &bool, _, cx| {
-                                                        let id = this.game_id.clone();
-                                                        let enabled = *checked;
-                                                        this.state.update(cx, |state, cx| {
-                                                            state.set_dlss_inputs(
-                                                                &id, enabled, cx,
-                                                            )
-                                                        });
-                                                    },
-                                                )),
-                                        ),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(
-                                            "Lets games show their DLSS and DLSS frame \
-                                             generation options so OptiScaler can take them \
-                                             over. Turn off only if spoofing causes problems \
-                                             in this game.",
-                                        ),
-                                )
-                            } else {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(
-                                            "Nvidia GPU — DLSS inputs work natively, no \
-                                             spoofing needed.",
-                                        ),
-                                )
-                            }
-                        }),
-                )
+                    }))
             })
             .child(
-                crate::views::ui::section("OptiScaler version", cx)
+                crate::views::ui::section("Compatibility", cx)
                     .child(
                         h_flex()
-                            .gap_2()
-                            .items_center()
-                            .children(
-                                self.version_select
-                                    .as_ref()
-                                    .map(|state| Select::new(state).small().w(px(220.))),
+                            .gap_3()
+                            .items_start()
+                            .child(
+                                // What the game ships: the inputs OptiScaler can hook.
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .p_3()
+                                    .rounded(px(10.))
+                                    .border_1()
+                                    .border_color(crate::theme::tokens::card_border())
+                                    .bg(crate::theme::tokens::inner_bg())
+                                    .map(|this| {
+                                        if upscaler_techs.is_empty() {
+                                            this.child(
+                                                div()
+                                                    .text_sm()
+                                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                    .text_color(cx.theme().warning)
+                                                    .child("No upscaler DLLs found"),
+                                            )
+                                            .child(crate::views::ui::hint(
+                                                "OptiScaler hooks a game's existing \
+                                                 DLSS/FSR/XeSS inputs, so it will most \
+                                                 likely do nothing here.",
+                                                cx,
+                                            ))
+                                        } else {
+                                            let labels = upscaler_techs
+                                                .iter()
+                                                .map(|tech| tech.label())
+                                                .collect::<Vec<_>>()
+                                                .join(" and ");
+                                            this.child(
+                                                h_flex()
+                                                    .gap_1p5()
+                                                    .items_center()
+                                                    .child(
+                                                        div()
+                                                            .text_color(
+                                                                crate::theme::tokens::success_pill_text(),
+                                                            )
+                                                            .child(
+                                                                Icon::new(IconName::Check)
+                                                                    .xsmall(),
+                                                            ),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_weight(
+                                                                gpui::FontWeight::SEMIBOLD,
+                                                            )
+                                                            .child(format!("Ships {labels}")),
+                                                    ),
+                                            )
+                                            .children(upscaler_files.iter().take(3).map(
+                                                |detection| {
+                                                    crate::views::ui::hint(
+                                                        format!(
+                                                            "{}: {}",
+                                                            detection.tech.label(),
+                                                            detection.file.display()
+                                                        ),
+                                                        cx,
+                                                    )
+                                                },
+                                            ))
+                                        }
+                                    }),
                             )
-                            .when(!selected_published.is_empty(), |this| {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(format!("released {selected_published}")),
-                                )
-                            }),
+                            .child(
+                                // Anti-cheat verdict beside it, green or red.
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .p_3()
+                                    .rounded(px(10.))
+                                    .border_1()
+                                    .map(|this| {
+                                        if anticheat.is_empty() {
+                                            this.border_color(
+                                                crate::theme::tokens::card_border(),
+                                            )
+                                            .bg(crate::theme::tokens::inner_bg())
+                                            .child(
+                                                h_flex()
+                                                    .gap_1p5()
+                                                    .items_center()
+                                                    .child(
+                                                        div()
+                                                            .text_color(
+                                                                crate::theme::tokens::success_pill_text(),
+                                                            )
+                                                            .child(
+                                                                Icon::new(IconName::Check)
+                                                                    .xsmall(),
+                                                            ),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_weight(
+                                                                gpui::FontWeight::SEMIBOLD,
+                                                            )
+                                                            .child("No anti-cheat found"),
+                                                    ),
+                                            )
+                                            .child(crate::views::ui::hint(
+                                                "Does not cover server-side systems such as \
+                                                 VAC — avoid OptiScaler in anything you play \
+                                                 online.",
+                                                cx,
+                                            ))
+                                        } else {
+                                            this.border_color(
+                                                crate::theme::tokens::danger_pill_border(),
+                                            )
+                                            .bg(crate::theme::tokens::danger_pill_bg())
+                                            .child(
+                                                h_flex()
+                                                    .gap_1p5()
+                                                    .items_center()
+                                                    .text_color(
+                                                        crate::theme::tokens::danger_pill_text(),
+                                                    )
+                                                    .child(
+                                                        Icon::new(IconName::TriangleAlert)
+                                                            .xsmall(),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .font_weight(
+                                                                gpui::FontWeight::SEMIBOLD,
+                                                            )
+                                                            .child(format!(
+                                                                "{anticheat_names} detected"
+                                                            )),
+                                                    ),
+                                            )
+                                            .child(crate::views::ui::hint(
+                                                "Installing OptiScaler here can get your \
+                                                 account banned.",
+                                                cx,
+                                            ))
+                                            .children(anticheat.iter().map(|detection| {
+                                                crate::views::ui::hint(
+                                                    format!(
+                                                        "{}: {}",
+                                                        detection.name,
+                                                        detection.evidence.display()
+                                                    ),
+                                                    cx,
+                                                )
+                                            }))
+                                        }
+                                    }),
+                            ),
                     )
-                    .when(!selected_notes.is_empty(), |this| {
+                    .when_some(gpu, |this, gpu| {
+                        let needs_spoofing = gpu.vendor.needs_spoofing();
                         this.child(
-                            v_flex()
-                                .id("changelog")
-                                .mt_1()
+                            h_flex()
+                                .gap_3()
+                                .items_center()
+                                .justify_between()
                                 .p_3()
-                                .gap_1()
-                                .max_h(px(180.))
-                                .w_full()
-                                .overflow_hidden()
                                 .rounded(px(10.))
                                 .border_1()
                                 .border_color(crate::theme::tokens::card_border())
                                 .bg(crate::theme::tokens::inner_bg())
                                 .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(format!("What's new in {selected_tag}")),
-                                )
-                                .children(selected_notes.iter().map(|line| {
-                                    use opti_core::text::NoteLine;
-                                    match line {
-                                        NoteLine::Heading { level, text } => div()
-                                            .pt_1()
-                                            .text_sm()
-                                            .font_weight(if *level <= 2 {
-                                                gpui::FontWeight::SEMIBOLD
-                                            } else {
-                                                gpui::FontWeight::MEDIUM
-                                            })
-                                            .text_color(cx.theme().foreground)
-                                            .child(text.clone())
-                                            .into_any_element(),
-                                        NoteLine::Bullet { indent, text } => h_flex()
-                                            .gap_1p5()
-                                            .items_start()
-                                            .pl(px(8. + *indent as f32 * 14.))
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(cx.theme().primary)
-                                                    .child("•"),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .flex_1()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(text.clone()),
-                                            )
-                                            .into_any_element(),
-                                        NoteLine::Text(text) => div()
-                                            .text_xs()
-                                            .text_color(cx.theme().muted_foreground)
-                                            .child(text.clone())
-                                            .into_any_element(),
-                                        // Paragraph separator.
-                                        NoteLine::Blank => div().h(px(6.)).into_any_element(),
-                                    }
-                                }))
-                                .overflow_y_scrollbar(),
-                        )
-                    }),
-            )
-            .when(!anticheat.is_empty(), |this| {
-                this.child(
-                    v_flex()
-                        .gap_1()
-                        .p_2()
-                        .rounded(cx.theme().radius)
-                        .border_1()
-                        .border_color(cx.theme().danger)
-                        .bg(cx.theme().danger.opacity(0.12))
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .text_color(cx.theme().danger)
-                                .child(Icon::new(IconName::TriangleAlert))
-                                .child(div().text_sm().child(format!(
-                                    "{anticheat_names} detected — installing OptiScaler \
-                                     here can get your account banned"
-                                ))),
-                        )
-                        .children(anticheat.iter().map(|detection| {
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(format!(
-                                    "{}: {}",
-                                    detection.name,
-                                    detection.evidence.display()
-                                ))
-                        })),
-                )
-            })
-            .when(anticheat.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(
-                            "No anti-cheat files found in this game. That does not cover \
-                             server-side systems such as VAC, so avoid OptiScaler in \
-                             anything you play online.",
-                        ),
-                )
-            })
-            .when_some(optipatcher_supported, |this, supported_exe| {
-                let can_add = is_managed && busy.is_none() && !optipatcher_installed;
-                this.child(
-                    v_flex()
-                        .gap_1()
-                        .p_3()
-                        .rounded(px(10.))
-                        .border_1()
-                        .border_color(crate::theme::tokens::accent_panel_border())
-                        .bg(crate::theme::tokens::accent_panel_bg())
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .justify_between()
-                                .child(
                                     v_flex()
                                         .gap_0p5()
-                                        .child(div().text_sm().child(if optipatcher_installed {
-                                            "OptiPatcher installed".to_string()
-                                        } else {
-                                            "OptiPatcher supported".to_string()
-                                        }))
                                         .child(
                                             div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(format!(
-                                                    "This game ({supported_exe}) is on OptiPatcher's \
-                                                     list: it unlocks DLSS and DLSS-FG inputs without \
-                                                     GPU spoofing or its overhead."
-                                                )),
-                                        ),
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .child(format!("GPU: {gpu}")),
+                                        )
+                                        .child(crate::views::ui::hint(
+                                            if needs_spoofing {
+                                                "Use DLSS inputs — spoofs an Nvidia GPU so \
+                                                 games expose their DLSS options. Turn off \
+                                                 only if spoofing causes problems here."
+                                            } else {
+                                                "Nvidia GPU — DLSS inputs work natively, no \
+                                                 spoofing needed."
+                                            },
+                                            cx,
+                                        )),
                                 )
-                                .when(!optipatcher_installed, |this| {
+                                .when(needs_spoofing, |this| {
                                     this.child(
-                                        Button::new("add-optipatcher")
-                                            .small()
-                                            .outline()
-                                            .label("Install OptiPatcher")
-                                            .disabled(!can_add)
-                                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                                let id = this.game_id.clone();
-                                                this.state.update(cx, |state, cx| {
-                                                    state.install_optipatcher(&id, cx)
-                                                });
-                                            })),
+                                        Switch::new("dlss-inputs")
+                                            .checked(dlss_inputs)
+                                            .on_click(cx.listener(
+                                                |this, checked: &bool, _, cx| {
+                                                    let id = this.game_id.clone();
+                                                    let enabled = *checked;
+                                                    this.state.update(cx, |state, cx| {
+                                                        state.set_dlss_inputs(&id, enabled, cx)
+                                                    });
+                                                },
+                                            )),
                                     )
                                 }),
                         )
-                        .when(!is_managed && !optipatcher_installed, |this| {
-                            this.child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Install OptiScaler first; OptiPatcher loads through it."),
-                            )
-                        }),
-                )
-            })
+                    })
+                    .when_some(optipatcher_supported, |this, supported_exe| {
+                        let can_add = is_managed && busy.is_none() && !optipatcher_installed;
+                        this.child(
+                            v_flex()
+                                .gap_1()
+                                .p_3()
+                                .rounded(px(10.))
+                                .border_1()
+                                .border_color(crate::theme::tokens::accent_panel_border())
+                                .bg(crate::theme::tokens::accent_panel_bg())
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            v_flex()
+                                                .gap_0p5()
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                        .text_color(cx.theme().accent_foreground)
+                                                        .child(if optipatcher_installed {
+                                                            "OptiPatcher installed".to_string()
+                                                        } else {
+                                                            "OptiPatcher supported".to_string()
+                                                        }),
+                                                )
+                                                .child(crate::views::ui::hint(
+                                                    format!(
+                                                        "This game ({supported_exe}) is on \
+                                                         OptiPatcher's list: it unlocks DLSS \
+                                                         and DLSS-FG inputs without GPU \
+                                                         spoofing or its overhead."
+                                                    ),
+                                                    cx,
+                                                )),
+                                        )
+                                        .when(!optipatcher_installed, |this| {
+                                            this.child(
+                                                Button::new("add-optipatcher")
+                                                    .small()
+                                                    .outline()
+                                                    .label("Install OptiPatcher")
+                                                    .disabled(!can_add)
+                                                    .on_click(cx.listener(
+                                                        |this, _: &ClickEvent, _, cx| {
+                                                            let id = this.game_id.clone();
+                                                            this.state.update(cx, |state, cx| {
+                                                                state.install_optipatcher(
+                                                                    &id, cx,
+                                                                )
+                                                            });
+                                                        },
+                                                    )),
+                                            )
+                                        }),
+                                )
+                                .when(!is_managed && !optipatcher_installed, |this| {
+                                    this.child(crate::views::ui::hint(
+                                        "Install OptiScaler first; OptiPatcher loads \
+                                         through it.",
+                                        cx,
+                                    ))
+                                }),
+                        )
+                    }),
+            )
             .when_some(conflicts, |this, files| {
                 this.child(
                     v_flex()

@@ -6,7 +6,7 @@ use gpui::{
     prelude::FluentBuilder, px, size,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, IconName, Sizable, VirtualListScrollHandle,
+    ActiveTheme, Disableable, Icon, IconName, Sizable, VirtualListScrollHandle,
     button::{Button, ButtonVariants},
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -202,7 +202,12 @@ impl Render for GameGrid {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(Input::new(&self.search).small().w(px(260.)))
+                            .child(
+                                Input::new(&self.search)
+                                    .small()
+                                    .w(px(260.))
+                                    .prefix(Icon::new(IconName::Search).xsmall()),
+                            )
                             .child(
                                 Button::new("rescan")
                                     .small()

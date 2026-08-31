@@ -3,7 +3,7 @@ use gpui::{
     Render, Styled, Subscription, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, Selectable, Sizable,
+    ActiveTheme, Disableable, Icon, IconName, Selectable, Sizable,
     button::{Button, ButtonVariants},
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -20,8 +20,7 @@ use crate::app_state::{AppState, UpdateState};
 pub struct SettingsView {
     state: Entity<AppState>,
     key_input: Entity<InputState>,
-    game_input: Entity<InputState>,
-    folder_input: Entity<InputState>,
+    location_input: Entity<InputState>,
     /// Feedback from the last add attempt, shown under the inputs.
     location_error: Option<String>,
     saved: bool,
@@ -40,12 +39,12 @@ impl SettingsView {
         let key_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Paste your SteamGridDB API key")
+                .masked(true)
                 .default_value(existing)
         });
-        let game_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Path to one game's folder"));
-        let folder_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(r"Library folder to scan, e.g. D:\Games")
+        let location_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(r"Path to a game folder or a library to scan, e.g. D:\Games")
         });
 
         // Any edit invalidates the "Saved" note.
@@ -57,8 +56,7 @@ impl SettingsView {
         SettingsView {
             state,
             key_input,
-            game_input,
-            folder_input,
+            location_input,
             location_error: None,
             saved: false,
             _subscriptions: vec![subscription],
@@ -135,12 +133,20 @@ impl Render for SettingsView {
                 let busy = update.is_busy();
                 crate::views::ui::section("Updates", cx)
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!(
-                                "This is version {}.",
-                                opti_core::update::CURRENT_VERSION
+                        v_flex()
+                            .gap_0p5()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .child(format!(
+                                        "Version {}",
+                                        opti_core::update::CURRENT_VERSION
+                                    )),
+                            )
+                            .child(crate::views::ui::hint(
+                                "Updates install silently; the app restarts itself.",
+                                cx,
                             )),
                     )
                     .child(
@@ -155,6 +161,7 @@ impl Render for SettingsView {
                                         UpdateState::Checking => "Checking…",
                                         UpdateState::Downloading => "Downloading…",
                                         UpdateState::Installing => "Restarting…",
+                                        UpdateState::UpToDate => "Check again",
                                         _ => "Check for updates",
                                     })
                                     .disabled(busy)
@@ -256,6 +263,7 @@ impl Render for SettingsView {
             .child({
                 let manual_games = self.state.read(cx).settings.manual_games.clone();
                 let scan_folders = self.state.read(cx).settings.scan_folders.clone();
+                let games = self.state.read(cx).games.clone();
                 crate::views::ui::section("Game locations", cx)
                     .child(
                         div()
@@ -272,14 +280,14 @@ impl Render for SettingsView {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(Input::new(&self.game_input).small().w(px(360.)))
+                            .child(Input::new(&self.location_input).small().flex_1())
                             .child(
                                 Button::new("add-game")
                                     .small()
                                     .outline()
                                     .label("Add game")
                                     .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                                        let input = this.game_input.clone();
+                                        let input = this.location_input.clone();
                                         this.add_location(
                                             &input,
                                             |state, dir, cx| state.add_manual_game(dir, cx),
@@ -287,20 +295,14 @@ impl Render for SettingsView {
                                             cx,
                                         );
                                     })),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(Input::new(&self.folder_input).small().w(px(360.)))
+                            )
                             .child(
                                 Button::new("add-folder")
                                     .small()
                                     .outline()
                                     .label("Add scan folder")
                                     .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                                        let input = this.folder_input.clone();
+                                        let input = this.location_input.clone();
                                         this.add_location(
                                             &input,
                                             |state, dir, cx| state.add_scan_folder(dir, cx),
@@ -313,53 +315,50 @@ impl Render for SettingsView {
                     .when_some(self.location_error.clone(), |this, message| {
                         this.child(div().text_xs().text_color(cx.theme().danger).child(message))
                     })
-                    .children(manual_games.iter().enumerate().map(|(ix, dir)| {
-                        let for_remove = dir.clone();
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                Button::new(("rm-game", ix))
-                                    .small()
-                                    .ghost()
-                                    .label("Remove")
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                        let dir = for_remove.clone();
-                                        this.state.update(cx, |state, cx| {
-                                            state.remove_manual_game(&dir, cx)
-                                        });
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!("Game: {}", dir.display())),
-                            )
-                    }))
                     .children(scan_folders.iter().enumerate().map(|(ix, dir)| {
-                        let for_remove = dir.clone();
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                Button::new(("rm-folder", ix))
-                                    .small()
-                                    .ghost()
-                                    .label("Remove")
-                                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        let count = games
+                            .iter()
+                            .filter(|game| {
+                                game.store == opti_core::Store::Manual
+                                    && game.install_dir.starts_with(dir)
+                            })
+                            .count();
+                        let detail = match count {
+                            1 => "scan folder · 1 game".to_string(),
+                            n => format!("scan folder · {n} games"),
+                        };
+                        location_row(("rm-folder", ix), dir, detail, cx).child(
+                            Button::new(("rm-folder-btn", ix))
+                                .small()
+                                .ghost()
+                                .label("Remove")
+                                .on_click({
+                                    let for_remove = dir.clone();
+                                    cx.listener(move |this, _: &ClickEvent, _, cx| {
                                         let dir = for_remove.clone();
                                         this.state.update(cx, |state, cx| {
                                             state.remove_scan_folder(&dir, cx)
                                         });
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!("Scan folder: {}", dir.display())),
-                            )
+                                    })
+                                }),
+                        )
+                    }))
+                    .children(manual_games.iter().enumerate().map(|(ix, dir)| {
+                        location_row(("rm-game", ix), dir, "game".to_string(), cx).child(
+                            Button::new(("rm-game-btn", ix))
+                                .small()
+                                .ghost()
+                                .label("Remove")
+                                .on_click({
+                                    let for_remove = dir.clone();
+                                    cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                        let dir = for_remove.clone();
+                                        this.state.update(cx, |state, cx| {
+                                            state.remove_manual_game(&dir, cx)
+                                        });
+                                    })
+                                }),
+                        )
                     }))
             })
             .child({
@@ -424,4 +423,38 @@ impl Render for SettingsView {
             )
             .overflow_y_scrollbar()
     }
+}
+
+/// One saved location as an inner card: folder icon, path, and a type chip.
+/// The caller appends its Remove button so the listener stays with the view.
+fn location_row(
+    id: impl Into<gpui::ElementId>,
+    dir: &std::path::Path,
+    detail: String,
+    cx: &App,
+) -> gpui::Stateful<gpui::Div> {
+    h_flex()
+        .id(id)
+        .gap_2()
+        .items_center()
+        .py_2()
+        .px_3()
+        .rounded(px(10.))
+        .border_1()
+        .border_color(crate::theme::tokens::card_border())
+        .bg(crate::theme::tokens::inner_bg())
+        .child(
+            div()
+                .text_color(cx.theme().muted_foreground)
+                .child(Icon::new(IconName::Folder).small()),
+        )
+        .child(
+            div()
+                .text_xs()
+                .flex_1()
+                .overflow_hidden()
+                .text_color(cx.theme().foreground)
+                .child(dir.display().to_string()),
+        )
+        .child(crate::views::ui::chip(detail, cx))
 }

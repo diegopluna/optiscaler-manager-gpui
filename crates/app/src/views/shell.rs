@@ -1,6 +1,7 @@
 use gpui::{
-    App, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render, Styled,
-    Subscription, Window, div, prelude::FluentBuilder, px,
+    App, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement,
+    Render, StatefulInteractiveElement, Styled, Subscription, Window, div, prelude::FluentBuilder,
+    px,
 };
 use gpui_component::{
     ActiveTheme, IconName, Side, Sizable,
@@ -197,9 +198,16 @@ impl Render for Shell {
                                 .when(update_available, |this| {
                                     this.child(
                                         div()
+                                            .id("update-note")
                                             .text_xs()
                                             .text_color(cx.theme().primary)
-                                            .child("Update available — see Settings"),
+                                            .cursor_pointer()
+                                            .hover(|this| this.text_color(cx.theme().primary_hover))
+                                            .child("Update available — see Settings")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.route = Route::Settings;
+                                                cx.notify();
+                                            })),
                                     )
                                 }),
                         ),
