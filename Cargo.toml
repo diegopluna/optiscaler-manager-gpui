@@ -6,7 +6,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/dpeter/optiscaler-manager-gpui"
+repository = "https://github.com/diegopluna/optiscaler-manager-gpui"
 
 [workspace.dependencies]
 opti-core = { path = "crates/core" }

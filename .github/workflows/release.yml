@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build and publish (e.g. v0.1.0)
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Built on 22.04 rather than the newest image so the binary runs on
+          # distributions with an older glibc.
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            binary: optiscaler-manager
+          - name: windows-x86_64
+            os: windows-latest
+            binary: optiscaler-manager.exe
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config cmake \
+            libfontconfig1-dev libfreetype6-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev \
+            libxcb-randr0-dev libxcb-xkb-dev libxcb-shm0-dev \
+            libxcb-cursor-dev libxcb-xfixes0-dev libxcb-render0-dev \
+            libwayland-dev libasound2-dev libssl-dev libvulkan-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release -p optiscaler-manager
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
+          STAGE="optiscaler-manager-$VERSION-${{ matrix.name }}"
+          mkdir -p "$STAGE"
+          cp target/release/${{ matrix.binary }} "$STAGE/"
+          cp README.md LICENSE "$STAGE/" 2>/dev/null || cp README.md "$STAGE/"
+          tar -czf "$STAGE.tar.gz" "$STAGE"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.tag || github.ref_name }}"
+          $stage = "optiscaler-manager-$version-${{ matrix.name }}"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item "target/release/${{ matrix.binary }}" $stage
+          Copy-Item README.md $stage
+          if (Test-Path LICENSE) { Copy-Item LICENSE $stage }
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            *.tar.gz
+            *.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          ls -la artifacts
+          gh release create "$TAG" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "OptiScaler Manager $TAG" \
+            --generate-notes \
+            --verify-tag
