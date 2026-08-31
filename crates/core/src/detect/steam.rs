@@ -199,6 +199,13 @@ pub fn game_from_manifest(text: &str, steamapps: &Path) -> Option<Game> {
 mod tests {
     use super::*;
 
+    /// Steam escapes backslashes in the paths it writes, so a Windows library
+    /// is stored as `C:\\Games\\SteamLibrary`. Test fixtures have to do the
+    /// same or the parser correctly unescapes a path that was never escaped.
+    fn vdf_path(path: &Path) -> String {
+        path.display().to_string().replace('\\', r"\\")
+    }
+
     #[test]
     fn reads_library_paths_from_modern_vdf() {
         let temp = tempfile::tempdir().unwrap();
@@ -218,9 +225,9 @@ mod tests {
                     "2" {{ "path" "{}" }}
                 }}
                 "#,
-                root.display(),
-                other.display(),
-                root.join("does-not-exist").display(),
+                vdf_path(root),
+                vdf_path(&other),
+                vdf_path(&root.join("does-not-exist")),
             ),
         )
         .unwrap();
