@@ -34,7 +34,16 @@ primary target; Linux is supported and macOS runs for development.
   Saving preserves all ~1500 lines and comments; only changed values are
   rewritten.
 
-## Running it
+## Download
+
+Prebuilt binaries for Windows and Linux are attached to each
+[release](https://github.com/diegopluna/optiscaler-manager-gpui/releases).
+Unpack and run `optiscaler-manager`; there is nothing to install.
+
+Linux builds are made on Ubuntu 22.04 and need a Vulkan driver plus the usual
+X11/Wayland client libraries, which a desktop system will already have.
+
+## Building it
 
 ```sh
 cargo run -p optiscaler-manager
