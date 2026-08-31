@@ -57,7 +57,7 @@ impl NavItem {
     fn icon(self) -> IconName {
         match self {
             NavItem::Library => IconName::LayoutDashboard,
-            NavItem::Settings => IconName::Settings2,
+            NavItem::Settings => IconName::Settings,
         }
     }
 

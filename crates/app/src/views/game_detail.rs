@@ -224,9 +224,9 @@ impl gpui::Render for GameDetail {
         let is_managed = matches!(install, Some(InstallStatus::Managed(_)));
         let can_install = selected.is_some() && busy.is_none();
         let selected_tag = selected.as_ref().map(|r| r.tag.clone()).unwrap_or_default();
-        let selected_notes: Vec<String> = selected
+        let selected_notes: Vec<opti_core::text::NoteLine> = selected
             .as_ref()
-            .map(|release| opti_core::text::markdown_to_plain(&release.notes))
+            .map(|release| opti_core::text::markdown_note_lines(&release.notes))
             .unwrap_or_default();
         let selected_published = selected
             .as_ref()
@@ -554,11 +554,44 @@ impl gpui::Render for GameDetail {
                                         .child(format!("What's new in {selected_tag}")),
                                 )
                                 .children(selected_notes.iter().map(|line| {
-                                    // Blank lines keep paragraphs apart.
-                                    if line.is_empty() {
-                                        div().h(px(6.))
-                                    } else {
-                                        div().text_xs().child(line.clone())
+                                    use opti_core::text::NoteLine;
+                                    match line {
+                                        NoteLine::Heading { level, text } => div()
+                                            .pt_1()
+                                            .text_sm()
+                                            .font_weight(if *level <= 2 {
+                                                gpui::FontWeight::SEMIBOLD
+                                            } else {
+                                                gpui::FontWeight::MEDIUM
+                                            })
+                                            .text_color(cx.theme().foreground)
+                                            .child(text.clone())
+                                            .into_any_element(),
+                                        NoteLine::Bullet { indent, text } => h_flex()
+                                            .gap_1p5()
+                                            .items_start()
+                                            .pl(px(8. + *indent as f32 * 14.))
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().primary)
+                                                    .child("•"),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .flex_1()
+                                                    .text_color(cx.theme().muted_foreground)
+                                                    .child(text.clone()),
+                                            )
+                                            .into_any_element(),
+                                        NoteLine::Text(text) => div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(text.clone())
+                                            .into_any_element(),
+                                        // Paragraph separator.
+                                        NoteLine::Blank => div().h(px(6.)).into_any_element(),
                                     }
                                 }))
                                 .overflow_y_scrollbar(),

@@ -65,6 +65,86 @@ pub fn markdown_to_plain(source: &str) -> Vec<String> {
     out
 }
 
+/// One rendered line of release notes, with just enough structure for a UI
+/// to style it: headings get weight, bullets get a marker and indent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoteLine {
+    /// `#`-heading; level 1 is the largest.
+    Heading {
+        level: u8,
+        text: String,
+    },
+    /// List item; `indent` counts nesting levels starting at 0.
+    Bullet {
+        indent: usize,
+        text: String,
+    },
+    Text(String),
+    Blank,
+}
+
+/// Parses Markdown into styleable lines: the structure that matters when
+/// rendering (headings, bullets, paragraph breaks) survives, inline syntax
+/// is flattened the same way as [`markdown_to_plain`].
+pub fn markdown_note_lines(source: &str) -> Vec<NoteLine> {
+    let mut out: Vec<NoteLine> = Vec::new();
+    let mut in_code_block = false;
+
+    for raw in source.lines() {
+        let line = raw.trim_end();
+
+        if line.trim_start().starts_with("```") {
+            in_code_block = !in_code_block;
+            continue;
+        }
+        if in_code_block {
+            out.push(NoteLine::Text(line.to_string()));
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !matches!(out.last(), None | Some(NoteLine::Blank)) {
+                out.push(NoteLine::Blank);
+            }
+            continue;
+        }
+        if trimmed.chars().all(|c| c == '-' || c == '*' || c == '_') && trimmed.len() >= 3 {
+            continue;
+        }
+
+        let heading = trimmed.trim_start_matches('#');
+        let hashes = trimmed.len() - heading.len();
+        if hashes > 0 {
+            out.push(NoteLine::Heading {
+                level: hashes.min(6) as u8,
+                text: strip_inline(heading.trim()),
+            });
+            continue;
+        }
+
+        let indent_chars = line.len() - line.trim_start().len();
+        if let Some(rest) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+            .or_else(|| trimmed.strip_prefix("+ "))
+        {
+            out.push(NoteLine::Bullet {
+                indent: indent_chars / 2,
+                text: strip_inline(rest.trim_start()),
+            });
+            continue;
+        }
+
+        out.push(NoteLine::Text(strip_inline(trimmed)));
+    }
+
+    while matches!(out.last(), Some(NoteLine::Blank)) {
+        out.pop();
+    }
+    out
+}
+
 /// Removes inline emphasis, code ticks and link syntax, keeping link text.
 fn strip_inline(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -109,6 +189,31 @@ fn strip_inline(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn note_lines_keep_structure() {
+        let notes =
+            "# OptiScaler v0.9.4\n\nAdds **INT8** support.\n- New option\n  - nested detail";
+        assert_eq!(
+            markdown_note_lines(notes),
+            vec![
+                NoteLine::Heading {
+                    level: 1,
+                    text: "OptiScaler v0.9.4".into()
+                },
+                NoteLine::Blank,
+                NoteLine::Text("Adds INT8 support.".into()),
+                NoteLine::Bullet {
+                    indent: 0,
+                    text: "New option".into()
+                },
+                NoteLine::Bullet {
+                    indent: 1,
+                    text: "nested detail".into()
+                },
+            ]
+        );
+    }
 
     #[test]
     fn strips_headings_and_emphasis() {
