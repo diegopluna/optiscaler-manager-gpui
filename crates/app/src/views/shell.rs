@@ -12,8 +12,7 @@ use gpui_component::{
 use opti_core::GameId;
 
 use crate::app_state::AppState;
-use crate::views::config_editor::ConfigEditor;
-use crate::views::game_detail::{GameDetail, OpenConfig};
+use crate::views::game_detail::GameDetail;
 use crate::views::game_grid::{GameGrid, GameSelected};
 use crate::views::settings_view::SettingsView;
 
@@ -22,8 +21,6 @@ pub enum Route {
     Library,
     /// The detail page for one game, reached by clicking a card.
     GameDetail(GameId),
-    /// The `OptiScaler.ini` editor for one game.
-    ConfigEditor(GameId),
     Settings,
 }
 
@@ -61,10 +58,8 @@ impl NavItem {
     fn matches(self, route: &Route) -> bool {
         matches!(
             (self, route),
-            (
-                NavItem::Library,
-                Route::Library | Route::GameDetail(_) | Route::ConfigEditor(_)
-            ) | (NavItem::Settings, Route::Settings)
+            (NavItem::Library, Route::Library | Route::GameDetail(_))
+                | (NavItem::Settings, Route::Settings)
         )
     }
 }
@@ -75,13 +70,10 @@ pub struct Shell {
     grid: Entity<GameGrid>,
     /// Built on demand for whichever game is open.
     detail: Option<Entity<GameDetail>>,
-    config: Option<Entity<ConfigEditor>>,
     settings: Entity<SettingsView>,
     route: Route,
     focus_handle: FocusHandle,
     _subscriptions: Vec<Subscription>,
-    /// Kept alive while a detail page is open so its events reach us.
-    _detail_subscription: Option<Subscription>,
 }
 
 impl Shell {
@@ -98,33 +90,19 @@ impl Shell {
             state,
             grid,
             detail: None,
-            config: None,
             settings,
             route: Route::Library,
             focus_handle: cx.focus_handle(),
             _subscriptions: vec![subscription],
-            _detail_subscription: None,
         }
     }
 
     fn open_game(&mut self, id: GameId, cx: &mut Context<Self>) {
         // Reuse the existing view when reopening the same game.
         if self.detail.as_ref().map(|d| d.read(cx).game_id()) != Some(&id) {
-            let detail = GameDetail::view(self.state.clone(), id.clone(), cx);
-            self._detail_subscription =
-                Some(cx.subscribe(&detail, |this, _, event: &OpenConfig, cx| {
-                    this.open_config(event.0.clone(), cx);
-                }));
-            self.detail = Some(detail);
+            self.detail = Some(GameDetail::view(self.state.clone(), id.clone(), cx));
         }
         self.route = Route::GameDetail(id);
-        cx.notify();
-    }
-
-    fn open_config(&mut self, id: GameId, cx: &mut Context<Self>) {
-        // The ini is re-read on open, so always build a fresh editor.
-        self.config = Some(ConfigEditor::view(self.state.clone(), id.clone(), cx));
-        self.route = Route::ConfigEditor(id);
         cx.notify();
     }
 }
@@ -143,7 +121,6 @@ impl Render for Shell {
         // so both offer a way back.
         let back_target = match &self.route {
             Route::GameDetail(_) => Some(Route::Library),
-            Route::ConfigEditor(id) => Some(Route::GameDetail(id.clone())),
             _ => None,
         };
 
@@ -212,10 +189,7 @@ impl Render for Shell {
                             .items_center()
                             .child(match back_target {
                                 Some(target) => {
-                                    let label = match target {
-                                        Route::Library => "Back to library",
-                                        _ => "Back to game",
-                                    };
+                                    let label = "Back to library";
                                     Button::new("back")
                                         .small()
                                         .ghost()
@@ -245,10 +219,6 @@ impl Render for Shell {
                         Route::Settings => self.settings.clone().into_any_element(),
                         Route::GameDetail(_) => match &self.detail {
                             Some(detail) => detail.clone().into_any_element(),
-                            None => div().into_any_element(),
-                        },
-                        Route::ConfigEditor(_) => match &self.config {
-                            Some(editor) => editor.clone().into_any_element(),
                             None => div().into_any_element(),
                         },
                     }),

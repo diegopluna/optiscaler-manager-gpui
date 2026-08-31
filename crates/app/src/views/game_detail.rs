@@ -18,11 +18,6 @@ use opti_core::optiscaler::{InstallStatus, PROXY_DLL_NAMES};
 
 use crate::app_state::AppState;
 
-/// Emitted when the user wants to edit this game's `OptiScaler.ini`.
-pub struct OpenConfig(pub GameId);
-
-impl gpui::EventEmitter<OpenConfig> for GameDetail {}
-
 /// Per-game page: install status and the actions available for it.
 pub struct GameDetail {
     state: Entity<AppState>,
@@ -488,20 +483,6 @@ impl gpui::Render for GameDetail {
                                 this.state.update(cx, |state, cx| state.install(&id, cx));
                             })),
                     )
-                    .when(
-                        install.as_ref().is_some_and(InstallStatus::is_installed),
-                        |this| {
-                            this.child(
-                                Button::new("configure")
-                                    .outline()
-                                    .icon(IconName::Settings2)
-                                    .label("Configure")
-                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                        cx.emit(OpenConfig(this.game_id.clone()));
-                                    })),
-                            )
-                        },
-                    )
                     .when(is_managed, |this| {
                         this.child(
                             Button::new("uninstall")
@@ -519,7 +500,10 @@ impl gpui::Render for GameDetail {
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(format!("OptiScaler will be loaded as {proxy_for_click}.")),
+                    .child(format!(
+                        "OptiScaler will be loaded as {proxy_for_click}. Configure it from \
+                         its own overlay in game — press Insert once the game is running."
+                    )),
             )
             .into_any_element()
     }

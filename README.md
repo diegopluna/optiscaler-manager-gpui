@@ -29,10 +29,9 @@ primary target; Linux is supported and macOS runs for development.
   file and its hash, so uninstall removes exactly what was added and leaves
   anything you edited in place. The catalog tags each game with the version it
   has, or marks a hand-made install as "Manual".
-- **Edits the config.** The full `OptiScaler.ini` — every section and key — with
-  the mod's own documentation shown inline and the right control per key.
-  Saving preserves all ~1500 lines and comments; only changed values are
-  rewritten.
+- **Leaves configuration to OptiScaler itself.** Once installed, press Insert
+  in game to open OptiScaler's own settings overlay. Updates and reinstalls
+  preserve the `OptiScaler.ini` the overlay writes.
 
 ## Download
 
@@ -66,9 +65,8 @@ cargo test --workspace
 ```
 
 Covers the VDF and manifest parsers, the exe-directory heuristics, anti-cheat
-signature matching, changelog rendering, install and uninstall against
-temporary directories, and a byte-identical round trip of the real shipped
-`OptiScaler.ini`.
+signature matching, changelog rendering, and install/uninstall against
+temporary directories.
 
 One test is network-bound and ignored by default. It downloads the current
 OptiScaler release, extracts it and runs a full install/uninstall cycle — worth

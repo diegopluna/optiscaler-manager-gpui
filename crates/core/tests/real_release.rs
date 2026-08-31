@@ -35,17 +35,6 @@ fn downloads_extracts_and_installs_the_latest_release() {
     assert!(payload.join(archive::PAYLOAD_DLL).is_file());
     assert!(payload.join(archive::PAYLOAD_INI).is_file());
 
-    // The shipped ini must survive a parse/serialize round trip, since the
-    // config editor rewrites this exact file.
-    let ini_source = std::fs::read_to_string(payload.join(archive::PAYLOAD_INI)).unwrap();
-    let doc = opti_core::optiscaler::ini::IniDocument::parse(&ini_source);
-    assert_eq!(doc.to_source(), ini_source, "shipped ini must round-trip");
-    println!(
-        "ini: {} sections, {} keys",
-        doc.section_names().len(),
-        doc.keys().len()
-    );
-
     // Install into a scratch "game" directory and take it back out again.
     let game = tempfile::tempdir().unwrap();
     let manifest = install::install(&payload, game.path(), "dxgi.dll", &release.tag)

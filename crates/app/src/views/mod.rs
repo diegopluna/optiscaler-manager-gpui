@@ -1,4 +1,3 @@
-pub mod config_editor;
 pub mod game_card;
 pub mod game_detail;
 pub mod game_grid;

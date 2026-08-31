@@ -1,6 +1,5 @@
 pub mod archive;
 pub mod github;
-pub mod ini;
 pub mod install;
 
 use std::path::PathBuf;
