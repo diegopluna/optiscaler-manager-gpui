@@ -141,6 +141,17 @@ fn relative_files(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
+/// Files in the release archive that exist only for manual installs. The
+/// setup script deletes them (and itself) when it finishes, so leaving them
+/// in a game folder makes a completed install look like an aborted one.
+fn is_manual_setup_helper(relative: &Path) -> bool {
+    if relative.components().count() != 1 {
+        return false;
+    }
+    let name = relative.to_string_lossy().to_lowercase();
+    name == "setup_windows.bat" || name == "setup_linux.sh" || name.starts_with("!!")
+}
+
 /// Files already present in `dir` that installing `payload` would overwrite
 /// and that we did not install ourselves. Callers should confirm with the user
 /// before proceeding.
@@ -152,6 +163,9 @@ pub fn conflicts(payload: &Path, dir: &Path, proxy_name: &str) -> Result<Vec<Str
 
     let mut conflicts = Vec::new();
     for relative in relative_files(payload)? {
+        if is_manual_setup_helper(&relative) {
+            continue;
+        }
         let target = destination(&relative, proxy_name);
         let name = target.to_string_lossy().replace('\\', "/");
         if dir.join(&target).exists() && !managed.contains(&name) {
@@ -193,6 +207,9 @@ pub fn install(
     let mut files = Vec::new();
 
     for relative in relative_files(payload)? {
+        if is_manual_setup_helper(&relative) {
+            continue;
+        }
         let target = destination(&relative, proxy_name);
         let target_path = dir.join(&target);
 
@@ -316,6 +333,16 @@ mod tests {
         std::fs::write(dir.path().join(PAYLOAD_INI), b"; defaults").unwrap();
         std::fs::create_dir_all(dir.path().join("plugins")).unwrap();
         std::fs::write(dir.path().join("plugins/fakenvapi.dll"), b"fake").unwrap();
+        // Manual-setup helpers shipped in the real archive; these must never
+        // reach the game directory.
+        std::fs::write(dir.path().join("setup_windows.bat"), b"@echo off").unwrap();
+        std::fs::write(dir.path().join("setup_linux.sh"), b"#!/bin/sh").unwrap();
+        std::fs::write(
+            dir.path()
+                .join("!! README_EXTRACT ALL FILES TO GAME FOLDER !!.txt"),
+            b"readme",
+        )
+        .unwrap();
         dir
     }
 
@@ -329,6 +356,17 @@ mod tests {
         assert!(game.path().join("dxgi.dll").is_file(), "dll was renamed");
         assert!(!game.path().join(PAYLOAD_DLL).exists());
         assert!(game.path().join("plugins/fakenvapi.dll").is_file());
+        assert!(
+            !game.path().join("setup_windows.bat").exists()
+                && !game.path().join("setup_linux.sh").exists(),
+        );
+        assert!(
+            std::fs::read_dir(game.path())
+                .unwrap()
+                .flatten()
+                .all(|e| !e.file_name().to_string_lossy().starts_with("!!")),
+            "the extract-me readme stays out of the game folder"
+        );
         assert_eq!(manifest.release_tag, "v0.9.4");
         assert_eq!(manifest.files.len(), 3);
 

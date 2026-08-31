@@ -19,6 +19,9 @@ const IGNORED_EXE_PREFIXES: &[&str] = &[
     "be_service",
     "vcredist",
     "dxsetup",
+    "redprelauncher",
+    "redlauncher",
+    "cleanupbtservice",
     "dotnetfx",
     "oalinst",
     "uninstall",
@@ -90,16 +93,11 @@ pub fn guess_exe_dir(install_dir: &Path, launch_exe: Option<&Path>) -> PathBuf {
         return parent.to_path_buf();
     }
 
-    // A single executable in the root is unambiguous.
-    let top_level: Vec<&PathBuf> = exes
-        .iter()
-        .filter(|path| path.parent() == Some(install_dir))
-        .collect();
-    if top_level.len() == 1 {
-        return install_dir.to_path_buf();
-    }
-
-    // Otherwise assume the biggest executable is the game itself.
+    // Assume the biggest executable is the game itself. A lone executable in
+    // the install root is deliberately NOT trusted: for many games that file
+    // is a small launcher stub (Cyberpunk's REDprelauncher.exe, GOG Galaxy
+    // wrappers) while the real binary lives in bin/x64 or similar, and a
+    // proxy DLL placed next to the launcher never gets loaded.
     let largest = exes
         .iter()
         .max_by_key(|path| std::fs::metadata(path).map(|m| m.len()).unwrap_or(0));
@@ -142,13 +140,33 @@ mod tests {
     }
 
     #[test]
-    fn single_root_executable_wins() {
+    fn small_launcher_stub_at_root_loses_to_the_real_binary() {
+        // Cyberpunk-style layout: the only root executable is a launcher
+        // stub, and the game itself lives in bin/x64. The proxy DLL must go
+        // next to the real binary or it never loads.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        write(&root.join("start.exe"), 1_000);
+        write(&root.join("bin/x64/Game.exe"), 5_000_000);
+
+        assert_eq!(guess_exe_dir(root, None), root.join("bin/x64"));
+    }
+
+    #[test]
+    fn known_launcher_names_are_ignored_outright() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        write(&root.join("REDprelauncher.exe"), 9_000_000);
+        write(&root.join("bin/x64/Cyberpunk2077.exe"), 500_000);
+
+        assert_eq!(guess_exe_dir(root, None), root.join("bin/x64"));
+    }
+
+    #[test]
+    fn a_simple_game_with_one_executable_resolves_to_its_root() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         write(&root.join("Witcher3.exe"), 100);
-        // A bigger executable nested elsewhere should not beat the only
-        // top-level one.
-        write(&root.join("tools/editor.exe"), 9000);
 
         assert_eq!(guess_exe_dir(root, None), root);
     }

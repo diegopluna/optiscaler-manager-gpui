@@ -42,6 +42,15 @@ fn downloads_extracts_and_installs_the_latest_release() {
 
     println!("installed {} files", manifest.files.len());
     assert!(game.path().join("dxgi.dll").is_file(), "proxy dll written");
+    // The archive's manual-setup helpers must not reach the game folder; a
+    // finished install that still shows setup scripts looks aborted.
+    for entry in std::fs::read_dir(game.path()).unwrap().flatten() {
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        assert!(
+            !name.ends_with(".bat") && !name.ends_with(".sh") && !name.starts_with("!!"),
+            "setup helper leaked into the game folder: {name}"
+        );
+    }
     assert!(!game.path().join(archive::PAYLOAD_DLL).exists());
     assert_eq!(
         install::status(game.path()).version(),
