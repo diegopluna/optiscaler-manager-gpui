@@ -1,6 +1,7 @@
 pub mod custom;
 pub mod epic;
 pub mod steam;
+pub mod steam_apptype;
 pub mod xbox;
 
 use std::collections::HashSet;

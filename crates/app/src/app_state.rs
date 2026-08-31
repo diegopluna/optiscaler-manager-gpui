@@ -278,6 +278,7 @@ impl AppState {
                 this.scan = ScanState::Ready;
                 this.fetch_artwork(cx);
                 this.refresh_statuses(cx);
+                this.resolve_steam_app_types(cx);
                 cx.notify();
             })
             .ok();
@@ -415,6 +416,68 @@ impl AppState {
                 .ok();
             }
             Err(err) => log::warn!("could not fetch OptiPatcher compatibility: {err:#}"),
+        })
+        .detach();
+    }
+
+    /// Looks up the Steam type (game / dlc / music / demo) of any appid the
+    /// cache does not know yet, then drops resolved non-games from the
+    /// catalog. Results are cached forever, so this only costs network the
+    /// first time an app is seen; failures leave the entry visible.
+    fn resolve_steam_app_types(&mut self, cx: &mut Context<Self>) {
+        let cache = opti_core::detect::steam_apptype::load_cache();
+        let unknown: Vec<u32> = self
+            .games
+            .iter()
+            .filter_map(|game| game.steam_app_id)
+            .filter(|id| !cache.contains_key(id))
+            .collect();
+        if unknown.is_empty() {
+            return;
+        }
+        log::info!("resolving app types for {} Steam entries", unknown.len());
+
+        let work = cx.background_spawn(async move {
+            let mut cache = cache;
+            for app_id in unknown {
+                match opti_core::detect::steam_apptype::fetch_type(app_id) {
+                    Ok(Some(app_type)) => {
+                        cache.insert(app_id, app_type);
+                    }
+                    // No store entry (delisted): call it a game so it stays,
+                    // and remember that so it is never asked about again.
+                    Ok(None) => {
+                        cache.insert(app_id, "game".to_string());
+                    }
+                    // Rate limited or offline: retry on a later scan.
+                    Err(err) => log::warn!("app type lookup for {app_id}: {err:#}"),
+                }
+            }
+            if let Err(err) = opti_core::detect::steam_apptype::save_cache(&cache) {
+                log::warn!("could not save the app type cache: {err:#}");
+            }
+            cache
+        });
+
+        cx.spawn(async move |this, cx| {
+            let cache = work.await;
+            this.update(cx, |this, cx| {
+                let before = this.games.len();
+                this.games.retain(|game| {
+                    game.steam_app_id.is_none_or(|id| {
+                        !opti_core::detect::steam_apptype::is_known_non_game(&cache, id)
+                    })
+                });
+                let hidden = before - this.games.len();
+                if hidden > 0 {
+                    log::info!("hid {hidden} DLC/soundtrack/demo entries");
+                    let ids: std::collections::HashSet<GameId> =
+                        this.games.iter().map(|game| game.id.clone()).collect();
+                    this.statuses.retain(|id, _| ids.contains(id));
+                    cx.notify();
+                }
+            })
+            .ok();
         })
         .detach();
     }

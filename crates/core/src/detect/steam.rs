@@ -84,6 +84,10 @@ pub fn detect() -> Vec<Game> {
 
     log::info!("found Steam at {}", steam_root.display());
 
+    // Appids the type cache already proves are DLC, soundtracks or demos
+    // never enter the catalog; unknown ones stay until a lookup resolves.
+    let types = super::steam_apptype::load_cache();
+
     let mut games = Vec::new();
     let mut seen = BTreeMap::new();
 
@@ -91,7 +95,10 @@ pub fn detect() -> Vec<Game> {
         for game in games_in_library(&library) {
             // The same appid can appear in several libraries if a manifest was
             // left behind by a move; first one with a real directory wins.
-            if seen.insert(game.steam_app_id, ()).is_none() {
+            let known_non_game = game
+                .steam_app_id
+                .is_some_and(|id| super::steam_apptype::is_known_non_game(&types, id));
+            if !known_non_game && seen.insert(game.steam_app_id, ()).is_none() {
                 games.push(game);
             }
         }

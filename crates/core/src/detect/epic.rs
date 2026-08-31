@@ -23,11 +23,18 @@ struct EpicManifest {
     /// game and would otherwise show up as duplicates.
     #[serde(default)]
     app_categories: Vec<String>,
+    /// For DLC this names the base game; for the base game it equals
+    /// `AppName`. The strongest offline DLC signal Epic provides.
+    #[serde(default)]
+    main_game_app_name: String,
 }
 
 impl EpicManifest {
     fn is_installable_game(&self) -> bool {
+        let is_dlc = !self.main_game_app_name.is_empty()
+            && !self.main_game_app_name.eq_ignore_ascii_case(&self.app_name);
         !self.b_is_incomplete_install
+            && !is_dlc
             && !self.install_location.is_empty()
             && self
                 .app_categories
@@ -215,6 +222,37 @@ mod tests {
         assert_eq!(game.store, Store::Epic);
         assert_eq!(game.id.as_str(), "epic-cerulean");
         assert_eq!(game.launch_exe, Some(temp.path().join("Control_DX12.exe")));
+    }
+
+    #[test]
+    fn skips_dlc_by_main_game_reference() {
+        let temp = tempfile::tempdir().unwrap();
+        // Categories say "games" (some DLC carries both), but the main-game
+        // reference points elsewhere: this is DLC.
+        let json = format!(
+            r#"{{
+                "DisplayName": "Control: AWE",
+                "InstallLocation": {:?},
+                "AppName": "CeruleanAWE",
+                "MainGameAppName": "Cerulean",
+                "AppCategories": ["games", "addons"]
+            }}"#,
+            temp.path().to_string_lossy(),
+        );
+        assert!(game_from_manifest(&json).is_none());
+
+        // A base game references itself and must survive.
+        let json = format!(
+            r#"{{
+                "DisplayName": "Control",
+                "InstallLocation": {:?},
+                "AppName": "Cerulean",
+                "MainGameAppName": "Cerulean",
+                "AppCategories": ["games"]
+            }}"#,
+            temp.path().to_string_lossy(),
+        );
+        assert!(game_from_manifest(&json).is_some());
     }
 
     #[test]
