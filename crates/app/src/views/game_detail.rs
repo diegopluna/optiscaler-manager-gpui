@@ -4,7 +4,6 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, IndexPath, Selectable, Sizable,
-    badge::Badge,
     button::{Button, ButtonGroup, ButtonVariants},
     h_flex,
     input::{Input, InputState},
@@ -253,13 +252,14 @@ impl gpui::Render for GameDetail {
                     .items_start()
                     .child(
                         div()
-                            .w(px(170.))
-                            .h(px(244.))
+                            .w(px(176.))
+                            .h(px(254.))
                             .flex_shrink_0()
-                            .rounded_lg()
+                            .rounded(px(12.))
                             .overflow_hidden()
                             .border_1()
-                            .border_color(cx.theme().border)
+                            .border_color(crate::theme::tokens::cover_border())
+                            .shadow_lg()
                             .when_some(artwork, |this, path| this.child(img(path).size_full())),
                     )
                     .child(
@@ -268,22 +268,52 @@ impl gpui::Render for GameDetail {
                             .flex_1()
                             .child(
                                 div()
-                                    .text_2xl()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_size(px(28.))
+                                    .font_weight(gpui::FontWeight::BOLD)
                                     .child(game.title.clone()),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(game.store.label()),
                             )
                             .child(
                                 h_flex()
                                     .gap_2()
                                     .items_center()
-                                    .pt_2()
-                                    .child(Badge::new().child(status_label.clone())),
+                                    .pt_1()
+                                    .child(crate::views::ui::chip(game.store.label(), cx))
+                                    .child({
+                                        use crate::theme::tokens;
+                                        let base = h_flex()
+                                            .h(px(22.))
+                                            .gap_1()
+                                            .items_center()
+                                            .px_2()
+                                            .rounded(px(6.))
+                                            .border_1()
+                                            .text_xs()
+                                            .font_weight(gpui::FontWeight::MEDIUM);
+                                        if is_managed {
+                                            base.bg(tokens::success_pill_bg())
+                                                .border_color(tokens::success_pill_border())
+                                                .text_color(tokens::success_pill_text())
+                                                .child(
+                                                    Icon::new(IconName::Check).xsmall(),
+                                                )
+                                                .child(status_label.clone())
+                                        } else {
+                                            base.bg(cx.theme().secondary)
+                                                .border_color(cx.theme().border)
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(status_label.clone())
+                                        }
+                                    })
+                                    .when(!upscaler_techs.is_empty(), |this| {
+                                        this.child(crate::views::ui::chip(
+                                            upscaler_techs
+                                                .iter()
+                                                .map(|tech| tech.label())
+                                                .collect::<Vec<_>>()
+                                                .join(" · "),
+                                            cx,
+                                        ))
+                                    }),
                             )
                             .child(
                                 div()
@@ -539,14 +569,15 @@ impl gpui::Render for GameDetail {
                             v_flex()
                                 .id("changelog")
                                 .mt_1()
-                                .p_2()
-                                .gap_0p5()
+                                .p_3()
+                                .gap_1()
                                 .max_h(px(180.))
                                 .w_full()
                                 .overflow_hidden()
-                                .rounded(cx.theme().radius)
+                                .rounded(px(10.))
                                 .border_1()
-                                .border_color(cx.theme().border)
+                                .border_color(crate::theme::tokens::card_border())
+                                .bg(crate::theme::tokens::inner_bg())
                                 .child(
                                     div()
                                         .text_xs()
@@ -647,10 +678,11 @@ impl gpui::Render for GameDetail {
                 this.child(
                     v_flex()
                         .gap_1()
-                        .p_2()
-                        .rounded(cx.theme().radius)
+                        .p_3()
+                        .rounded(px(10.))
                         .border_1()
-                        .border_color(cx.theme().border)
+                        .border_color(crate::theme::tokens::accent_panel_border())
+                        .bg(crate::theme::tokens::accent_panel_bg())
                         .child(
                             h_flex()
                                 .gap_2()

@@ -2,6 +2,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app_state;
+mod theme;
 mod views;
 
 use gpui::{
@@ -30,6 +31,7 @@ fn main() {
             }
             _ => {}
         }
+        theme::apply(cx);
 
         cx.spawn(async move |cx| {
             let bounds = cx.update(|cx| Bounds::centered(None, size(px(1280.), px(820.)), cx))?;

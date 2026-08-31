@@ -39,14 +39,15 @@ fn store_label(store: Store) -> &'static str {
 /// A small pill drawn over the cover art.
 fn tag(label: String, background: Hsla, foreground: Hsla, icon: Option<IconName>) -> Div {
     h_flex()
-        .gap_0p5()
+        .gap_1()
         .items_center()
-        .px_1()
-        .py_0p5()
-        .rounded_sm()
+        .h(px(22.))
+        .px_2()
+        .rounded(px(6.))
         .bg(background)
         .text_color(foreground)
         .text_xs()
+        .font_weight(gpui::FontWeight::SEMIBOLD)
         .children(icon.map(|icon| Icon::new(icon).xsmall()))
         .child(label)
 }
@@ -78,19 +79,28 @@ pub fn game_card(
             .into_any_element(),
     };
 
+    use crate::theme::tokens;
     let install_tag = match status.map(|status| &status.install) {
-        Some(InstallStatus::Managed(manifest)) => Some(tag(
-            manifest.release_tag.clone(),
-            cx.theme().success,
-            cx.theme().success_foreground,
-            Some(IconName::Check),
-        )),
-        Some(InstallStatus::Unmanaged { .. }) => Some(tag(
-            "Manual".to_string(),
-            cx.theme().warning,
-            cx.theme().warning_foreground,
-            None,
-        )),
+        Some(InstallStatus::Managed(manifest)) => Some(
+            tag(
+                manifest.release_tag.clone(),
+                tokens::success_pill_bg(),
+                tokens::success_pill_text(),
+                Some(IconName::Check),
+            )
+            .border_1()
+            .border_color(tokens::success_pill_border()),
+        ),
+        Some(InstallStatus::Unmanaged { .. }) => Some(
+            tag(
+                "Manual".to_string(),
+                tokens::danger_pill_bg(),
+                cx.theme().warning,
+                None,
+            )
+            .border_1()
+            .border_color(cx.theme().warning.opacity(0.4)),
+        ),
         _ => None,
     };
 
@@ -99,10 +109,12 @@ pub fn game_card(
     let anticheat_tag = status.filter(|status| status.has_anticheat()).map(|_| {
         tag(
             "Anti-cheat".to_string(),
-            cx.theme().danger,
-            cx.theme().danger_foreground,
+            tokens::danger_pill_bg(),
+            tokens::danger_pill_text(),
             Some(IconName::TriangleAlert),
         )
+        .border_1()
+        .border_color(tokens::danger_pill_border())
     });
 
     // Which upscalers the game itself ships — where OptiScaler has inputs to
@@ -126,10 +138,11 @@ pub fn game_card(
                 .relative()
                 .w(px(CARD_WIDTH))
                 .h(px(COVER_HEIGHT))
-                .rounded(cx.theme().radius)
+                .rounded(px(10.))
                 .overflow_hidden()
                 .border_1()
-                .border_color(cx.theme().border)
+                .border_color(crate::theme::tokens::cover_border())
+                .shadow_lg()
                 .group_hover("game-card", |this| this.border_color(cx.theme().primary))
                 .child(cover)
                 .child(
@@ -165,7 +178,7 @@ pub fn game_card(
                 .child(
                     div()
                         .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(crate::theme::tokens::faint_text())
                         .child(store_label(game.store)),
                 ),
         )

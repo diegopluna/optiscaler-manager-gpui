@@ -154,6 +154,14 @@ impl AppState {
         self.statuses.get(id)
     }
 
+    /// How many games have OptiScaler in them right now.
+    pub fn installed_count(&self) -> usize {
+        self.statuses
+            .values()
+            .filter(|status| status.install.is_installed())
+            .count()
+    }
+
     /// The proxy DLL name to use for a game: whatever is installed, else the
     /// user's saved choice, else the default.
     pub fn proxy_name_for(&self, id: &GameId) -> String {

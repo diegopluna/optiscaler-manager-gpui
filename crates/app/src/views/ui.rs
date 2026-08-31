@@ -4,23 +4,39 @@ use gpui::{App, Div, ParentElement, Styled, div, hsla, px};
 use gpui_component::{ActiveTheme, h_flex, v_flex};
 
 /// A titled content card: the unit every page is built from, so spacing and
-/// borders stay consistent everywhere.
+/// borders stay consistent everywhere. Titles render as small uppercase
+/// labels, per the design canvas.
 pub fn section(title: impl Into<String>, cx: &App) -> Div {
+    let _ = cx;
     v_flex()
         .w_full()
-        .gap_2()
-        .p_3()
-        .rounded_lg()
+        .gap_2p5()
+        .p_4()
+        .rounded(px(12.))
         .border_1()
-        .border_color(cx.theme().border)
-        .bg(cx.theme().secondary.opacity(0.35))
+        .border_color(crate::theme::tokens::card_border())
+        .bg(crate::theme::tokens::card_bg())
         .child(
             div()
-                .text_sm()
+                .text_size(px(11.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(cx.theme().foreground)
-                .child(title.into()),
+                .text_color(crate::theme::tokens::section_label())
+                .child(title.into().to_uppercase()),
         )
+}
+
+/// A small neutral chip, for metadata like the store or shipped upscalers.
+pub fn chip(label: impl Into<String>, cx: &App) -> Div {
+    h_flex()
+        .h(px(22.))
+        .px_2()
+        .rounded(px(6.))
+        .bg(cx.theme().secondary)
+        .border_1()
+        .border_color(cx.theme().border)
+        .text_color(cx.theme().muted_foreground)
+        .text_xs()
+        .child(label.into())
 }
 
 /// One line of muted helper text under a control.

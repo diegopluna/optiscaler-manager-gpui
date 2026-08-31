@@ -6,7 +6,7 @@ use gpui::{
     prelude::FluentBuilder, px, size,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, IconName, Selectable, Sizable, VirtualListScrollHandle,
+    ActiveTheme, Disableable, IconName, Sizable, VirtualListScrollHandle,
     button::{Button, ButtonVariants},
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -146,6 +146,7 @@ impl Render for GameGrid {
 
         let visible = self.visible_games(cx);
         let stores = self.stores_present(cx);
+        let installed = state.installed_count();
         let has_filter = !self.filter.trim().is_empty() || self.store_filter.is_some();
 
         // The virtual list needs row sizes up front; recompute them whenever
@@ -187,7 +188,10 @@ impl Render for GameGrid {
                                 if scanning {
                                     "Scanning…".to_string()
                                 } else if visible.len() == total_games {
-                                    format!("{total_games} games")
+                                    match installed {
+                                        0 => format!("{total_games} games"),
+                                        n => format!("{total_games} games · {n} with OptiScaler"),
+                                    }
                                 } else {
                                     format!("{} of {total_games} games", visible.len())
                                 },
@@ -213,34 +217,60 @@ impl Render for GameGrid {
                     ),
             )
             .when(stores.len() > 1, |this| {
+                let filter_chip = |id: &'static str, label: String, active: bool| {
+                    div()
+                        .id(id)
+                        .h(px(26.))
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .rounded(px(13.))
+                        .border_1()
+                        .text_xs()
+                        .cursor_pointer()
+                        .map(|this| {
+                            if active {
+                                this.bg(cx.theme().accent)
+                                    .border_color(cx.theme().primary.opacity(0.35))
+                                    .text_color(cx.theme().accent_foreground)
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                            } else {
+                                this.border_color(cx.theme().border)
+                                    .text_color(cx.theme().muted_foreground)
+                            }
+                        })
+                        .child(label)
+                };
                 this.child(
                     h_flex()
-                        .gap_1()
+                        .gap_1p5()
                         .child(
-                            Button::new("store-all")
-                                .small()
-                                .ghost()
-                                .selected(self.store_filter.is_none())
-                                .label(format!("All ({total_games})"))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.store_filter = None;
-                                    cx.notify();
-                                })),
+                            filter_chip(
+                                "store-all",
+                                format!("All · {total_games}"),
+                                self.store_filter.is_none(),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.store_filter = None;
+                                cx.notify();
+                            })),
                         )
                         .children(stores.into_iter().map(|(store, count)| {
-                            Button::new(store.slug())
-                                .small()
-                                .ghost()
-                                .selected(self.store_filter == Some(store))
-                                .label(format!("{} ({count})", store.label()))
-                                .on_click(cx.listener(move |this, _, _, cx| {
+                            filter_chip(
+                                store.slug(),
+                                format!("{} · {count}", store.label()),
+                                self.store_filter == Some(store),
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
                                     this.store_filter = if this.store_filter == Some(store) {
                                         None
                                     } else {
                                         Some(store)
                                     };
                                     cx.notify();
-                                }))
+                                },
+                            ))
                         })),
                 )
             })

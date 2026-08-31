@@ -130,42 +130,6 @@ impl Render for SettingsView {
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child("Settings"),
             )
-            .child(
-                crate::views::ui::section("SteamGridDB API key", cx)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(
-                                "Steam games get their cover art from Steam directly. \
-                                 Epic and Xbox games need a free SteamGridDB key; without \
-                                 one they fall back to a generated placeholder.",
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(Input::new(&self.key_input).w(px(360.)))
-                            .child(
-                                Button::new("save-key")
-                                    .primary()
-                                    .small()
-                                    .label("Save")
-                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                        this.save_key(cx);
-                                    })),
-                            )
-                            .when(self.saved, |this| {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().success)
-                                        .child("Saved — fetching artwork"),
-                                )
-                            }),
-                    ),
-            )
             .child({
                 let update = self.state.read(cx).update.clone();
                 let busy = update.is_busy();
@@ -253,6 +217,42 @@ impl Render for SettingsView {
                             ),
                     )
             })
+            .child(
+                crate::views::ui::section("Artwork", cx)
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(
+                                "Steam games get their cover art from Steam directly. \
+                                 Epic and Xbox games need a free SteamGridDB key; without \
+                                 one they fall back to a generated placeholder.",
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(Input::new(&self.key_input).w(px(360.)))
+                            .child(
+                                Button::new("save-key")
+                                    .primary()
+                                    .small()
+                                    .label("Save")
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        this.save_key(cx);
+                                    })),
+                            )
+                            .when(self.saved, |this| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().success)
+                                        .child("Saved — fetching artwork"),
+                                )
+                            }),
+                    ),
+            )
             .child({
                 let manual_games = self.state.read(cx).settings.manual_games.clone();
                 let scan_folders = self.state.read(cx).settings.scan_folders.clone();
@@ -381,6 +381,7 @@ impl Render for SettingsView {
                                 _ => gpui_component::ThemeMode::from(window.appearance()),
                             };
                             gpui_component::Theme::change(mode, Some(window), cx);
+                            crate::theme::apply(cx);
                         }))
                 };
                 crate::views::ui::section("Appearance", cx).child(
@@ -392,7 +393,7 @@ impl Render for SettingsView {
                 )
             })
             .child(
-                crate::views::ui::section("Locations", cx)
+                crate::views::ui::section("About", cx)
                     .child(
                         div()
                             .text_xs()
