@@ -250,6 +250,28 @@ pub fn install(
     Ok(manifest)
 }
 
+/// Adds files to an existing managed install's manifest, so later uninstalls
+/// remove them too. Used for extras added after the main install, such as
+/// OptiPatcher. Paths are relative to `dir` and must exist.
+pub fn record_extra_files(dir: &Path, relative_paths: &[PathBuf]) -> Result<()> {
+    let Some(mut manifest) = InstallManifest::read(dir) else {
+        bail!("no install manifest in {}", dir.display());
+    };
+
+    for relative in relative_paths {
+        let name = relative.to_string_lossy().replace('\\', "/");
+        let hash = sha256(&dir.join(relative))?;
+        match manifest.files.iter_mut().find(|f| f.path == name) {
+            Some(existing) => existing.sha256 = hash,
+            None => manifest.files.push(InstalledFile {
+                path: name,
+                sha256: hash,
+            }),
+        }
+    }
+    manifest.write(dir)
+}
+
 /// Report of what an uninstall actually did.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct UninstallReport {
@@ -440,6 +462,30 @@ mod tests {
             InstallStatus::Unmanaged {
                 proxy_name: Some("winmm.dll".into())
             }
+        );
+    }
+
+    #[test]
+    fn extra_files_join_the_manifest_and_are_uninstalled() {
+        let payload = payload();
+        let game = tempfile::tempdir().unwrap();
+        install(payload.path(), game.path(), "dxgi.dll", "v0.9.4").unwrap();
+
+        // Simulate OptiPatcher being added after the install.
+        std::fs::create_dir_all(game.path().join("plugins")).unwrap();
+        std::fs::write(game.path().join("plugins/OptiPatcher.asi"), b"asi").unwrap();
+        record_extra_files(game.path(), &[PathBuf::from("plugins/OptiPatcher.asi")]).unwrap();
+
+        let report = uninstall(game.path(), false).unwrap();
+        assert!(
+            report
+                .removed
+                .iter()
+                .any(|f| f == "plugins/OptiPatcher.asi")
+        );
+        assert!(
+            !game.path().join("plugins").exists(),
+            "empty plugins dir cleaned up"
         );
     }
 

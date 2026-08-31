@@ -69,3 +69,66 @@ fn downloads_extracts_and_installs_the_latest_release() {
         install::InstallStatus::NotInstalled
     );
 }
+
+#[test]
+#[ignore = "network: fetches the live OptiPatcher compatibility source"]
+fn parses_the_live_optipatcher_compatibility_list() {
+    let supported = opti_core::optiscaler::optipatcher::fetch_supported_exes()
+        .expect("fetching and parsing the OptiPatcher source");
+    println!("{} supported executables", supported.len());
+
+    // Long-standing entries that should always be present; if these vanish
+    // the source format probably changed and the parser needs revisiting.
+    for expected in ["hogwartslegacy.exe", "stalker2-win64-shipping.exe"] {
+        assert!(
+            supported.iter().any(|s| s == expected),
+            "missing {expected}"
+        );
+    }
+    assert!(
+        supported.len() > 50,
+        "suspiciously few entries: {}",
+        supported.len()
+    );
+}
+
+#[test]
+#[ignore = "network: downloads the real OptiPatcher plugin"]
+fn installs_optipatcher_into_a_managed_install() {
+    use opti_core::optiscaler::optipatcher;
+
+    let release = github::latest_release().unwrap();
+    let payload = opti_core::optiscaler::prepare_payload(&release, |_, _| {}).unwrap();
+
+    // A fake Stalker 2: its shipping exe is on OptiPatcher's supported list.
+    let game = tempfile::tempdir().unwrap();
+    std::fs::write(game.path().join("Stalker2-Win64-Shipping.exe"), b"game").unwrap();
+    install::install(&payload, game.path(), "dxgi.dll", &release.tag).unwrap();
+
+    let supported = optipatcher::fetch_supported_exes().unwrap();
+    assert_eq!(
+        optipatcher::matching_exe(game.path(), &supported).as_deref(),
+        Some("stalker2-win64-shipping.exe")
+    );
+
+    let written = optipatcher::install(game.path()).unwrap();
+    install::record_extra_files(game.path(), &written).unwrap();
+
+    assert!(game.path().join("plugins/OptiPatcher.asi").is_file());
+    let ini = std::fs::read_to_string(game.path().join("OptiScaler.ini")).unwrap();
+    assert!(
+        ini.contains("LoadAsiPlugins=true"),
+        "ASI loading enabled in the ini"
+    );
+    assert!(optipatcher::is_installed(game.path()));
+
+    // Uninstall takes the plugin out with everything else.
+    let report = install::uninstall(game.path(), false).unwrap();
+    assert!(
+        report
+            .removed
+            .iter()
+            .any(|f| f == "plugins/OptiPatcher.asi")
+    );
+    assert!(!game.path().join("plugins").exists());
+}

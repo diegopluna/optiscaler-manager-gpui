@@ -182,6 +182,8 @@ impl gpui::Render for GameDetail {
         let install = status.map(|s| s.install.clone());
         let anticheat = status.map(|s| s.anticheat.clone()).unwrap_or_default();
         let anticheat_names = status.map(|s| s.anticheat_names()).unwrap_or_default();
+        let optipatcher_supported = status.and_then(|s| s.optipatcher_supported.clone());
+        let optipatcher_installed = status.is_some_and(|s| s.optipatcher_installed);
 
         let (status_label, status_detail) = match &install {
             Some(InstallStatus::Managed(manifest)) => (
@@ -449,6 +451,65 @@ impl gpui::Render for GameDetail {
                              server-side systems such as VAC, so avoid OptiScaler in \
                              anything you play online.",
                         ),
+                )
+            })
+            .when_some(optipatcher_supported, |this, supported_exe| {
+                let can_add = is_managed && busy.is_none() && !optipatcher_installed;
+                this.child(
+                    v_flex()
+                        .gap_1()
+                        .p_2()
+                        .rounded(cx.theme().radius)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .justify_between()
+                                .child(
+                                    v_flex()
+                                        .gap_0p5()
+                                        .child(div().text_sm().child(if optipatcher_installed {
+                                            "OptiPatcher installed".to_string()
+                                        } else {
+                                            "OptiPatcher supported".to_string()
+                                        }))
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(format!(
+                                                    "This game ({supported_exe}) is on OptiPatcher's \
+                                                     list: it unlocks DLSS and DLSS-FG inputs without \
+                                                     GPU spoofing or its overhead."
+                                                )),
+                                        ),
+                                )
+                                .when(!optipatcher_installed, |this| {
+                                    this.child(
+                                        Button::new("add-optipatcher")
+                                            .small()
+                                            .outline()
+                                            .label("Install OptiPatcher")
+                                            .disabled(!can_add)
+                                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                                let id = this.game_id.clone();
+                                                this.state.update(cx, |state, cx| {
+                                                    state.install_optipatcher(&id, cx)
+                                                });
+                                            })),
+                                    )
+                                }),
+                        )
+                        .when(!is_managed && !optipatcher_installed, |this| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Install OptiScaler first; OptiPatcher loads through it."),
+                            )
+                        }),
                 )
             })
             .when_some(error, |this, message| {

@@ -29,6 +29,12 @@ primary target; Linux is supported and macOS runs for development.
   file and its hash, so uninstall removes exactly what was added and leaves
   anything you edited in place. The catalog tags each game with the version it
   has, or marks a hand-made install as "Manual".
+- **Offers OptiPatcher where it helps.** Games on
+  [OptiPatcher](https://github.com/optiscaler/OptiPatcher)'s supported list
+  get a one-click install of the plugin, which unlocks DLSS/DLSS-FG inputs
+  without GPU spoofing. Compatibility is checked against the same source
+  OptiScaler's own setup script uses, and the plugin is tracked in the
+  install manifest so uninstall removes it too.
 - **Leaves configuration to OptiScaler itself.** Once installed, press Insert
   in game to open OptiScaler's own settings overlay. Updates and reinstalls
   preserve the `OptiScaler.ini` the overlay writes.

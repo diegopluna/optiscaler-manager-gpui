@@ -33,6 +33,9 @@ pub struct GameStatus {
     /// Anti-cheat software found in the game. Empty means nothing was found
     /// on disk, which does not rule out server-side systems like VAC.
     pub anticheat: Vec<Detection>,
+    /// The supported executable name when OptiPatcher can patch this game.
+    pub optipatcher_supported: Option<String>,
+    pub optipatcher_installed: bool,
     /// Set while an install or uninstall is running, describing the step.
     pub busy: Option<String>,
     pub error: Option<String>,
@@ -67,6 +70,8 @@ pub struct AppState {
     pub release_error: Option<String>,
     artwork: HashMap<GameId, PathBuf>,
     statuses: HashMap<GameId, GameStatus>,
+    /// Lowercase executable names OptiPatcher supports, once fetched.
+    optipatcher_exes: Option<Vec<String>>,
     /// Release tag the user picked per game; absent means "use the newest".
     selected_release: HashMap<GameId, String>,
 }
@@ -82,9 +87,11 @@ impl AppState {
             artwork: HashMap::new(),
             statuses: HashMap::new(),
             selected_release: HashMap::new(),
+            optipatcher_exes: None,
         };
         this.rescan(cx);
         this.refresh_releases(cx);
+        this.refresh_optipatcher_list(cx);
         this
     }
 
@@ -232,10 +239,32 @@ impl AppState {
         cx.notify();
     }
 
+    /// Fetches OptiPatcher's supported-game list in the background. Statuses
+    /// are recomputed when it lands so the catalog can flag supported games.
+    fn refresh_optipatcher_list(&mut self, cx: &mut Context<Self>) {
+        let fetch = cx.background_spawn(async move {
+            opti_core::optiscaler::optipatcher::fetch_supported_exes()
+        });
+
+        cx.spawn(async move |this, cx| match fetch.await {
+            Ok(exes) => {
+                this.update(cx, |this, cx| {
+                    log::info!("OptiPatcher supports {} executables", exes.len());
+                    this.optipatcher_exes = Some(exes);
+                    this.refresh_statuses(cx);
+                })
+                .ok();
+            }
+            Err(err) => log::warn!("could not fetch OptiPatcher compatibility: {err:#}"),
+        })
+        .detach();
+    }
+
     /// Works out each game's install directory and whether OptiScaler is in it.
     fn refresh_statuses(&mut self, cx: &mut Context<Self>) {
         let overrides = self.settings.exe_dir_overrides.clone();
         let games = self.games.clone();
+        let optipatcher_exes = self.optipatcher_exes.clone().unwrap_or_default();
 
         let scan = cx.background_spawn(async move {
             games
@@ -250,7 +279,20 @@ impl AppState {
                     // anti-cheat often sits beside the launcher, a level up
                     // from the executable OptiScaler hooks.
                     let anticheat = opti_core::anticheat::scan(&game.install_dir);
-                    (game.id, target, install, anticheat)
+                    let optipatcher_supported = opti_core::optiscaler::optipatcher::matching_exe(
+                        &target,
+                        &optipatcher_exes,
+                    );
+                    let optipatcher_installed =
+                        opti_core::optiscaler::optipatcher::is_installed(&target);
+                    (
+                        game.id,
+                        target,
+                        install,
+                        anticheat,
+                        optipatcher_supported,
+                        optipatcher_installed,
+                    )
                 })
                 .collect::<Vec<_>>()
         });
@@ -258,7 +300,15 @@ impl AppState {
         cx.spawn(async move |this, cx| {
             let results = scan.await;
             this.update(cx, |this, cx| {
-                for (id, target_dir, install, anticheat) in results {
+                for (
+                    id,
+                    target_dir,
+                    install,
+                    anticheat,
+                    optipatcher_supported,
+                    optipatcher_installed,
+                ) in results
+                {
                     // Do not stomp on a game that is mid-install.
                     if this.statuses.get(&id).is_some_and(GameStatus::is_busy) {
                         continue;
@@ -279,6 +329,8 @@ impl AppState {
                             target_dir,
                             install,
                             anticheat,
+                            optipatcher_supported,
+                            optipatcher_installed,
                             busy: None,
                             error: None,
                         },
@@ -376,6 +428,55 @@ impl AppState {
                             status.install = installer::status(&status.target_dir);
                         }
                         Err(err) => status.error = Some(format!("{err:#}")),
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Downloads OptiPatcher into a game that already has a managed
+    /// OptiScaler install, records it in the manifest, and enables ASI
+    /// loading in the game's ini.
+    pub fn install_optipatcher(&mut self, id: &GameId, cx: &mut Context<Self>) {
+        let Some(status) = self.statuses.get_mut(id) else {
+            return;
+        };
+        if status.is_busy() || status.optipatcher_installed {
+            return;
+        }
+
+        let target = status.target_dir.clone();
+        let id = id.clone();
+
+        status.busy = Some("Adding OptiPatcher…".into());
+        status.error = None;
+        cx.notify();
+
+        let work = cx.background_spawn(async move {
+            let written = opti_core::optiscaler::optipatcher::install(&target)?;
+            installer::record_extra_files(&target, &written)?;
+            anyhow::Ok(())
+        });
+
+        cx.spawn(async move |this, cx| {
+            let result = work.await;
+            this.update(cx, |this, cx| {
+                if let Some(status) = this.statuses.get_mut(&id) {
+                    status.busy = None;
+                    match result {
+                        Ok(()) => {
+                            log::info!("installed OptiPatcher for {id}");
+                            status.optipatcher_installed = true;
+                            // Re-read so the manifest count shown stays honest.
+                            status.install = installer::status(&status.target_dir);
+                        }
+                        Err(err) => {
+                            log::error!("OptiPatcher install failed for {id}: {err:#}");
+                            status.error = Some(format!("{err:#}"));
+                        }
                     }
                 }
                 cx.notify();
