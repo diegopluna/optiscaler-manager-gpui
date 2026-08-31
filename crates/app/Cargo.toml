@@ -9,6 +9,9 @@ license.workspace = true
 name = "optiscaler-manager"
 path = "src/main.rs"
 
+[build-dependencies]
+winresource = "0.1"
+
 [dependencies]
 opti-core.workspace = true
 

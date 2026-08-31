@@ -44,8 +44,9 @@ pub enum UpdateCheck {
 /// What applying an update did, which decides what the UI asks of the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Applied {
-    /// The platform installer was launched; the app should quit so the
-    /// installer can replace it.
+    /// The silent installer was launched; it will close this app through
+    /// Restart Manager, swap the files, and relaunch it. The app must keep
+    /// running and wait to be closed.
     InstallerLaunched,
     /// The binary was swapped in place; the change takes effect on restart.
     RestartRequired,
@@ -182,8 +183,21 @@ pub fn apply(info: &UpdateInfo, progress: impl Fn(u64, u64)) -> Result<Applied> 
 
     #[cfg(target_os = "windows")]
     {
-        // Hand over to the installer; it closes the app and swaps the files.
+        // Run the installer with no UI at all. /CLOSEAPPLICATIONS lets it
+        // shut this app down through Restart Manager, /RESTARTAPPLICATIONS
+        // brings it back once the files are swapped, and the installer keeps
+        // the uninstall registry entries correct — so the update feels like a
+        // quiet restart rather than a setup wizard. The app must NOT quit on
+        // its own here: Restart Manager only restarts what it closed itself.
         std::process::Command::new(&downloaded)
+            .args([
+                "/VERYSILENT",
+                "/SUPPRESSMSGBOXES",
+                "/NORESTART",
+                "/CLOSEAPPLICATIONS",
+                "/FORCECLOSEAPPLICATIONS",
+                "/RESTARTAPPLICATIONS",
+            ])
             .spawn()
             .with_context(|| format!("launching {}", downloaded.display()))?;
         Ok(Applied::InstallerLaunched)

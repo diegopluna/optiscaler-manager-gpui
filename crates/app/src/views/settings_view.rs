@@ -1,13 +1,13 @@
 use gpui::{
-    App, AppContext, ClickEvent, Context, Entity, IntoElement, ParentElement, Render, Styled,
-    Subscription, Window, div, prelude::FluentBuilder, px,
+    App, AppContext, ClickEvent, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    Render, Styled, Subscription, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, Sizable,
+    ActiveTheme, Disableable, Selectable, Sizable,
     button::{Button, ButtonVariants},
-    divider::Divider,
     h_flex,
     input::{Input, InputEvent, InputState},
+    scroll::ScrollableElement,
     v_flex,
 };
 
@@ -119,14 +119,19 @@ impl Render for SettingsView {
         let game_count = self.state.read(cx).games.len();
 
         v_flex()
+            .id("settings-page")
             .size_full()
-            .gap_4()
-            .child(div().text_lg().child("Settings"))
-            .child(Divider::horizontal())
+            .gap_3()
+            .pr_2()
+            .pb_4()
             .child(
-                v_flex()
-                    .gap_2()
-                    .child(div().text_sm().child("SteamGridDB API key"))
+                div()
+                    .text_lg()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child("Settings"),
+            )
+            .child(
+                crate::views::ui::section("SteamGridDB API key", cx)
                     .child(
                         div()
                             .text_xs()
@@ -161,13 +166,10 @@ impl Render for SettingsView {
                             }),
                     ),
             )
-            .child(Divider::horizontal())
             .child({
                 let update = self.state.read(cx).update.clone();
                 let busy = update.is_busy();
-                v_flex()
-                    .gap_2()
-                    .child(div().text_sm().child("Updates"))
+                crate::views::ui::section("Updates", cx)
                     .child(
                         div()
                             .text_xs()
@@ -187,7 +189,8 @@ impl Render for SettingsView {
                                     .outline()
                                     .label(match &update {
                                         UpdateState::Checking => "Checking…",
-                                        UpdateState::Downloading => "Updating…",
+                                        UpdateState::Downloading => "Downloading…",
+                                        UpdateState::Installing => "Restarting…",
                                         _ => "Check for updates",
                                     })
                                     .disabled(busy)
@@ -223,6 +226,11 @@ impl Render for SettingsView {
                                     UpdateState::UpToDate => {
                                         Some(("Up to date".to_string(), false))
                                     }
+                                    UpdateState::Installing => Some((
+                                        "Updating — the app will close and reopen itself"
+                                            .to_string(),
+                                        false,
+                                    )),
                                     UpdateState::RestartRequired => Some((
                                         "Updated — restart the app to finish".to_string(),
                                         false,
@@ -245,13 +253,10 @@ impl Render for SettingsView {
                             ),
                     )
             })
-            .child(Divider::horizontal())
             .child({
                 let manual_games = self.state.read(cx).settings.manual_games.clone();
                 let scan_folders = self.state.read(cx).settings.scan_folders.clone();
-                v_flex()
-                    .gap_2()
-                    .child(div().text_sm().child("Game locations"))
+                crate::views::ui::section("Game locations", cx)
                     .child(
                         div()
                             .text_xs()
@@ -357,11 +362,37 @@ impl Render for SettingsView {
                             )
                     }))
             })
-            .child(Divider::horizontal())
+            .child({
+                let current = self.state.read(cx).settings.theme.clone();
+                let choice = |label: &'static str, value: Option<&'static str>| {
+                    let selected = current.as_deref() == value;
+                    Button::new(label)
+                        .small()
+                        .ghost()
+                        .selected(selected)
+                        .label(label)
+                        .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                            this.state.update(cx, |state, cx| {
+                                state.set_theme(value.map(str::to_string), cx)
+                            });
+                            let mode = match value {
+                                Some("light") => gpui_component::ThemeMode::Light,
+                                Some("dark") => gpui_component::ThemeMode::Dark,
+                                _ => gpui_component::ThemeMode::from(window.appearance()),
+                            };
+                            gpui_component::Theme::change(mode, Some(window), cx);
+                        }))
+                };
+                crate::views::ui::section("Appearance", cx).child(
+                    h_flex()
+                        .gap_1()
+                        .child(choice("System", None))
+                        .child(choice("Light", Some("light")))
+                        .child(choice("Dark", Some("dark"))),
+                )
+            })
             .child(
-                v_flex()
-                    .gap_1()
-                    .child(div().text_sm().child("Locations"))
+                crate::views::ui::section("Locations", cx)
                     .child(
                         div()
                             .text_xs()
@@ -390,5 +421,6 @@ impl Render for SettingsView {
                             }),
                     ),
             )
+            .overflow_y_scrollbar()
     }
 }

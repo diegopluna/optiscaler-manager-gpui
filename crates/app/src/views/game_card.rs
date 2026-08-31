@@ -106,23 +106,17 @@ pub fn game_card(
     });
 
     // Which upscalers the game itself ships — where OptiScaler has inputs to
-    // hook. Quiet styling: information, not a warning.
+    // hook. Quiet dark pills so they read on any cover art.
     let tech_tags: Vec<Div> = status
         .map(|status| opti_core::upscalers::techs(&status.upscalers))
         .unwrap_or_default()
         .into_iter()
-        .map(|tech| {
-            tag(
-                tech.label().to_string(),
-                cx.theme().secondary,
-                cx.theme().secondary_foreground,
-                None,
-            )
-        })
+        .map(|tech| crate::views::ui::art_pill(tech.label()))
         .collect();
 
     v_flex()
         .id(gpui::ElementId::Name(game.id.as_str().to_string().into()))
+        .group("game-card")
         .w(px(CARD_WIDTH))
         .h(px(CARD_HEIGHT))
         .gap_1()
@@ -136,6 +130,7 @@ pub fn game_card(
                 .overflow_hidden()
                 .border_1()
                 .border_color(cx.theme().border)
+                .group_hover("game-card", |this| this.border_color(cx.theme().primary))
                 .child(cover)
                 .child(
                     v_flex()

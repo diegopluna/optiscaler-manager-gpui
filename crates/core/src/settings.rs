@@ -19,6 +19,8 @@ pub struct Settings {
     pub exe_dir_overrides: BTreeMap<GameId, PathBuf>,
     /// Proxy DLL name chosen per game, remembered so updates reuse it.
     pub proxy_names: BTreeMap<GameId, String>,
+    /// UI theme: "light", "dark", or absent to follow the system.
+    pub theme: Option<String>,
     /// Set once the user has acknowledged the anti-cheat warning.
     pub anticheat_warning_acknowledged: bool,
     /// Games where the user turned DLSS inputs (Nvidia spoofing) off.

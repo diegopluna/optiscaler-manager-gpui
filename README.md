@@ -65,8 +65,9 @@ Grab the latest [release](https://github.com/diegopluna/optiscaler-manager-gpui/
   client libraries, which a desktop system will already have.
 
 Once installed, Settings → Check for updates fetches new versions in place:
-on Windows the app downloads the new installer and hands over to it, on
-Linux the binary is swapped and takes effect on the next launch.
+on Windows the new installer runs silently and the app restarts itself —
+no wizard; on Linux the binary is swapped and takes effect on the next
+launch.
 
 ## Building it
 

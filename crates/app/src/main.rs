@@ -19,6 +19,18 @@ fn main() {
     app.run(move |cx| {
         gpui_component::init(cx);
 
+        // Apply the saved theme before the window opens; absent means follow
+        // the system appearance, which is the default behaviour.
+        match opti_core::Settings::load().theme.as_deref() {
+            Some("light") => {
+                gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx)
+            }
+            Some("dark") => {
+                gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx)
+            }
+            _ => {}
+        }
+
         cx.spawn(async move |cx| {
             let bounds = cx.update(|cx| Bounds::centered(None, size(px(1280.), px(820.)), cx))?;
             cx.open_window(

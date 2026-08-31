@@ -26,6 +26,9 @@ pub enum UpdateState {
     UpToDate,
     Available(UpdateInfo),
     Downloading,
+    /// Windows only: the silent installer is replacing the app, which will
+    /// close and reopen by itself in a few seconds.
+    Installing,
     /// The new binary is in place; it runs on the next launch.
     RestartRequired,
     Failed(String),
@@ -33,7 +36,10 @@ pub enum UpdateState {
 
 impl UpdateState {
     pub fn is_busy(&self) -> bool {
-        matches!(self, UpdateState::Checking | UpdateState::Downloading)
+        matches!(
+            self,
+            UpdateState::Checking | UpdateState::Downloading | UpdateState::Installing
+        )
     }
 }
 
@@ -228,6 +234,13 @@ impl AppState {
         self.settings.scan_folders.retain(|d| d != dir);
         self.save_settings();
         self.rescan(cx);
+    }
+
+    /// Saves the theme choice; the caller applies it to the window.
+    pub fn set_theme(&mut self, theme: Option<String>, cx: &mut Context<Self>) {
+        self.settings.theme = theme;
+        self.save_settings();
+        cx.notify();
     }
 
     pub fn set_steamgriddb_key(&mut self, key: Option<String>, cx: &mut Context<Self>) {
@@ -741,8 +754,11 @@ impl AppState {
             this.update(cx, |this, cx| {
                 match result {
                     Ok(Applied::InstallerLaunched) => {
-                        log::info!("installer launched; quitting so it can replace the app");
-                        cx.quit();
+                        // The silent installer closes this app itself via
+                        // Restart Manager and relaunches it after the swap;
+                        // quitting here would stop the relaunch from firing.
+                        log::info!("silent installer running; waiting to be restarted");
+                        this.update = UpdateState::Installing;
                     }
                     Ok(Applied::RestartRequired) => {
                         this.update = UpdateState::RestartRequired;

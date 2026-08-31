@@ -6,7 +6,6 @@ use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, IndexPath, Selectable, Sizable,
     badge::Badge,
     button::{Button, ButtonGroup, ButtonVariants},
-    divider::Divider,
     h_flex,
     input::{Input, InputState},
     scroll::ScrollableElement,
@@ -243,18 +242,21 @@ impl gpui::Render for GameDetail {
             .unwrap_or(0);
 
         v_flex()
+            .id("game-detail")
             .size_full()
             .gap_4()
+            .pr_2()
+            .pb_4()
             .child(
                 h_flex()
                     .gap_4()
                     .items_start()
                     .child(
                         div()
-                            .w(px(140.))
-                            .h(px(200.))
+                            .w(px(170.))
+                            .h(px(244.))
                             .flex_shrink_0()
-                            .rounded(cx.theme().radius)
+                            .rounded_lg()
                             .overflow_hidden()
                             .border_1()
                             .border_color(cx.theme().border)
@@ -264,7 +266,12 @@ impl gpui::Render for GameDetail {
                         v_flex()
                             .gap_1()
                             .flex_1()
-                            .child(div().text_xl().child(game.title.clone()))
+                            .child(
+                                div()
+                                    .text_2xl()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .child(game.title.clone()),
+                            )
                             .child(
                                 div()
                                     .text_sm()
@@ -283,14 +290,73 @@ impl gpui::Render for GameDetail {
                                     .text_sm()
                                     .text_color(cx.theme().muted_foreground)
                                     .child(status_detail),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .pt_3()
+                                    .child(
+                                        Button::new("install")
+                                            .primary()
+                                            .disabled(
+                                                !can_install
+                                                    || (is_managed && !differs_from_installed),
+                                            )
+                                            .label(match (&busy, is_managed, differs_from_installed)
+                                            {
+                                                (Some(step), _, _) => step.clone(),
+                                                (None, true, true) => {
+                                                    format!("Switch to {selected_tag}")
+                                                }
+                                                (None, true, false) => {
+                                                    format!("{selected_tag} installed")
+                                                }
+                                                (None, false, _) => match selected.is_some() {
+                                                    true => format!("Install {selected_tag}"),
+                                                    false => "Checking for releases…".to_string(),
+                                                },
+                                            })
+                                            .on_click(cx.listener(
+                                                move |this, _: &ClickEvent, _, cx| {
+                                                    let id = id_for_install.clone();
+                                                    this.state.update(cx, |state, cx| {
+                                                        state.install(&id, cx)
+                                                    });
+                                                },
+                                            )),
+                                    )
+                                    .when(is_managed, |this| {
+                                        this.child(
+                                            Button::new("uninstall")
+                                                .danger()
+                                                .disabled(busy.is_some())
+                                                .label("Uninstall")
+                                                .on_click(cx.listener(
+                                                    move |this, _: &ClickEvent, _, cx| {
+                                                        let id = id_for_uninstall.clone();
+                                                        this.state.update(cx, |state, cx| {
+                                                            state.uninstall(&id, cx)
+                                                        });
+                                                    },
+                                                )),
+                                        )
+                                    })
+                                    .child(
+                                        Button::new("open-dir-hero")
+                                            .ghost()
+                                            .icon(IconName::FolderOpen)
+                                            .label("Open folder")
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, _, cx| {
+                                                    this.open_target_dir(cx);
+                                                },
+                                            )),
+                                    ),
                             ),
                     ),
             )
-            .child(Divider::horizontal())
             .child(
-                v_flex()
-                    .gap_1()
-                    .child(div().text_sm().child("Install directory"))
+                crate::views::ui::section("Install directory", cx)
                     .child(
                         div()
                             .text_xs()
@@ -329,9 +395,7 @@ impl gpui::Render for GameDetail {
                     })),
             )
             .child(
-                v_flex()
-                    .gap_1()
-                    .child(div().text_sm().child("Load OptiScaler as"))
+                crate::views::ui::section("Load OptiScaler as", cx)
                     .child(
                         div()
                             .text_xs()
@@ -363,8 +427,7 @@ impl gpui::Render for GameDetail {
                     ),
             )
             .child(
-                v_flex()
-                    .gap_0p5()
+                crate::views::ui::section("What this game ships", cx)
                     .map(|this| {
                         if upscaler_techs.is_empty() {
                             this.child(
@@ -402,9 +465,7 @@ impl gpui::Render for GameDetail {
             .when_some(gpu, |this, gpu| {
                 let needs_spoofing = gpu.vendor.needs_spoofing();
                 this.child(
-                    v_flex()
-                        .gap_1()
-                        .child(div().text_sm().child(format!("GPU: {gpu}")))
+                    crate::views::ui::section(format!("GPU: {gpu}"), cx)
                         .map(|this| {
                             if needs_spoofing {
                                 this.child(
@@ -454,13 +515,11 @@ impl gpui::Render for GameDetail {
                 )
             })
             .child(
-                v_flex()
-                    .gap_1()
+                crate::views::ui::section("OptiScaler version", cx)
                     .child(
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(div().text_sm().child("OptiScaler version"))
                             .children(
                                 self.version_select
                                     .as_ref()
@@ -681,40 +740,6 @@ impl gpui::Render for GameDetail {
                 )
             })
             .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        Button::new("install")
-                            .primary()
-                            .disabled(!can_install || (is_managed && !differs_from_installed))
-                            .label(match (&busy, is_managed, differs_from_installed) {
-                                (Some(step), _, _) => step.clone(),
-                                (None, true, true) => format!("Switch to {selected_tag}"),
-                                (None, true, false) => format!("{selected_tag} installed"),
-                                (None, false, _) => match selected.is_some() {
-                                    true => format!("Install {selected_tag}"),
-                                    false => "Checking for releases…".to_string(),
-                                },
-                            })
-                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                let id = id_for_install.clone();
-                                this.state.update(cx, |state, cx| state.install(&id, cx));
-                            })),
-                    )
-                    .when(is_managed, |this| {
-                        this.child(
-                            Button::new("uninstall")
-                                .danger()
-                                .disabled(busy.is_some())
-                                .label("Uninstall")
-                                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                    let id = id_for_uninstall.clone();
-                                    this.state.update(cx, |state, cx| state.uninstall(&id, cx));
-                                })),
-                        )
-                    }),
-            )
-            .child(
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
@@ -723,6 +748,7 @@ impl gpui::Render for GameDetail {
                          its own overlay in game — press Insert once the game is running."
                     )),
             )
+            .overflow_y_scrollbar()
             .into_any_element()
     }
 }

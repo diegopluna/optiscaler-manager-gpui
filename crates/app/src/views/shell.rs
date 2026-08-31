@@ -1,14 +1,29 @@
 use gpui::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render, Styled,
-    Subscription, Window, div, px,
+    Subscription, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, Icon, IconName, Side, Sizable,
+    ActiveTheme, IconName, Side, Sizable,
     button::{Button, ButtonVariants},
     h_flex,
-    sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
+    sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
     v_flex,
 };
+
+/// Detail and settings read better as a centered column than full-bleed.
+fn centered(content: gpui::AnyElement) -> gpui::AnyElement {
+    h_flex()
+        .size_full()
+        .justify_center()
+        .child(
+            gpui::div()
+                .w_full()
+                .max_w(gpui::px(860.))
+                .h_full()
+                .child(content),
+        )
+        .into_any_element()
+}
 use opti_core::GameId;
 
 use crate::app_state::AppState;
@@ -79,7 +94,7 @@ pub struct Shell {
 impl Shell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::entity(cx);
-        let grid = GameGrid::view(state.clone(), cx);
+        let grid = GameGrid::view(state.clone(), window, cx);
         let settings = SettingsView::view(state.clone(), window, cx);
 
         let subscription = cx.subscribe(&grid, |this, _, event: &GameSelected, cx| {
@@ -116,7 +131,10 @@ impl Focusable for Shell {
 impl Render for Shell {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let nav_items = [NavItem::Library, NavItem::Settings];
-        let scanning = self.state.read(cx).scan.is_scanning();
+        let update_available = matches!(
+            self.state.read(cx).update,
+            crate::app_state::UpdateState::Available(_)
+        );
         // Both the detail page and the config editor are reached from a game,
         // so both offer a way back.
         let back_target = match &self.route {
@@ -132,25 +150,18 @@ impl Render for Shell {
                     .w(px(240.))
                     .header(
                         SidebarHeader::new()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .size_8()
-                                    .flex_shrink_0()
-                                    .rounded(cx.theme().radius)
-                                    .bg(cx.theme().primary)
-                                    .text_color(cx.theme().primary_foreground)
-                                    .child(Icon::new(IconName::Bot)),
-                            )
+                            .child(crate::views::ui::logo_mark(34.))
                             .child(
                                 v_flex()
                                     .gap_0()
                                     .text_sm()
                                     .flex_1()
                                     .overflow_hidden()
-                                    .child("OptiScaler")
+                                    .child(
+                                        div()
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .child("OptiScaler"),
+                                    )
                                     .child(
                                         div()
                                             .text_xs()
@@ -171,6 +182,27 @@ impl Render for Shell {
                                     }))
                             }),
                         )),
+                    )
+                    .footer(
+                        SidebarFooter::new().child(
+                            v_flex()
+                                .gap_0p5()
+                                .w_full()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("v{}", opti_core::update::CURRENT_VERSION)),
+                                )
+                                .when(update_available, |this| {
+                                    this.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(cx.theme().primary)
+                                            .child("Update available — see Settings"),
+                                    )
+                                }),
+                        ),
                     ),
             )
             .child(
@@ -183,42 +215,26 @@ impl Render for Shell {
                     .overflow_hidden()
                     .p_4()
                     .gap_3()
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .items_center()
-                            .child(match back_target {
-                                Some(target) => {
-                                    let label = "Back to library";
-                                    Button::new("back")
-                                        .small()
-                                        .ghost()
-                                        .icon(IconName::ArrowLeft)
-                                        .label(label)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.route = target.clone();
-                                            cx.notify();
-                                        }))
-                                        .into_any_element()
-                                }
-                                None => div().into_any_element(),
-                            })
-                            .child(
-                                Button::new("rescan")
+                    .when_some(back_target, |this, target| {
+                        this.child(
+                            h_flex().child(
+                                Button::new("back")
                                     .small()
-                                    .outline()
-                                    .label(if scanning { "Scanning…" } else { "Rescan" })
-                                    .disabled(scanning)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.state.update(cx, |state, cx| state.rescan(cx));
+                                    .ghost()
+                                    .icon(IconName::ArrowLeft)
+                                    .label("Back to library")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.route = target.clone();
+                                        cx.notify();
                                     })),
                             ),
-                    )
+                        )
+                    })
                     .child(match &self.route {
                         Route::Library => self.grid.clone().into_any_element(),
-                        Route::Settings => self.settings.clone().into_any_element(),
+                        Route::Settings => centered(self.settings.clone().into_any_element()),
                         Route::GameDetail(_) => match &self.detail {
-                            Some(detail) => detail.clone().into_any_element(),
+                            Some(detail) => centered(detail.clone().into_any_element()),
                             None => div().into_any_element(),
                         },
                     }),

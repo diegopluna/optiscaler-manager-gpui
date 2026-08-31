@@ -35,7 +35,10 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
-RestartApplications=no
+; Lets a silent update close the running app via Restart Manager and bring
+; it back once the files are swapped.
+RestartApplications=yes
+SetupIconFile=..\icon\optiscaler-manager.ico
 UninstallDisplayIcon={app}\optiscaler-manager.exe
 LicenseFile=..\..\LICENSE
 WizardStyle=modern
