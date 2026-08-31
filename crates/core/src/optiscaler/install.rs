@@ -30,6 +30,10 @@ pub const DEFAULT_PROXY_DLL: &str = "dxgi.dll";
 /// Written into the game directory to record what we installed.
 pub const MANIFEST_NAME: &str = "optiscaler-manager.json";
 
+/// Where originals of files an install displaced are kept, inside the game
+/// directory itself so the pair can never drift apart.
+pub const BACKUP_DIR: &str = "optiscaler-manager.backup";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstalledFile {
     /// Path relative to the install directory.
@@ -45,6 +49,11 @@ pub struct InstallManifest {
     /// Seconds since the Unix epoch.
     pub installed_at: u64,
     pub files: Vec<InstalledFile>,
+    /// Files that existed before the install and were moved into
+    /// [`BACKUP_DIR`] — a ReShade dxgi.dll, another mod's proxy. Restored on
+    /// uninstall. Absent in old manifests.
+    #[serde(default)]
+    pub backed_up: Vec<String>,
 }
 
 impl InstallManifest {
@@ -152,9 +161,11 @@ fn is_manual_setup_helper(relative: &Path) -> bool {
     name == "setup_windows.bat" || name == "setup_linux.sh" || name.starts_with("!!")
 }
 
-/// Files already present in `dir` that installing `payload` would overwrite
-/// and that we did not install ourselves. Callers should confirm with the user
-/// before proceeding.
+/// Files already present in `dir` that installing `payload` would displace
+/// and that we did not install ourselves — a ReShade dxgi.dll, another mod's
+/// proxy. They are backed up and restored on uninstall, but the mod they
+/// belong to stops working meanwhile, so callers should confirm with the
+/// user before proceeding.
 pub fn conflicts(payload: &Path, dir: &Path, proxy_name: &str) -> Result<Vec<String>> {
     let managed: Vec<String> = match status(dir) {
         InstallStatus::Managed(manifest) => manifest.files.iter().map(|f| f.path.clone()).collect(),
@@ -203,6 +214,16 @@ pub fn install(
     }
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
 
+    // Files a previous install of ours put there are ours to overwrite; the
+    // backups it took are carried into the new manifest so an eventual
+    // uninstall still restores the true originals.
+    let previous = InstallManifest::read(dir);
+    let ours: Vec<String> = previous
+        .as_ref()
+        .map(|m| m.files.iter().map(|f| f.path.clone()).collect())
+        .unwrap_or_default();
+    let mut backed_up: Vec<String> = previous.map(|m| m.backed_up).unwrap_or_default();
+
     let keep_existing_ini = dir.join(PAYLOAD_INI).is_file();
     let mut files = Vec::new();
 
@@ -212,14 +233,30 @@ pub fn install(
         }
         let target = destination(&relative, proxy_name);
         let target_path = dir.join(&target);
+        let name = target.to_string_lossy().replace('\\', "/");
 
         // Never clobber settings the user has already tuned.
         if keep_existing_ini && target.to_string_lossy().eq_ignore_ascii_case(PAYLOAD_INI) {
             files.push(InstalledFile {
-                path: target.to_string_lossy().replace('\\', "/"),
+                path: name,
                 sha256: sha256(&target_path)?,
             });
             continue;
+        }
+
+        // A file that is present but not ours belongs to something else —
+        // move it aside so uninstall can put it back.
+        if target_path.exists() && !ours.contains(&name) && !backed_up.contains(&name) {
+            let backup_path = dir.join(BACKUP_DIR).join(&target);
+            std::fs::create_dir_all(backup_path.parent().unwrap())?;
+            std::fs::rename(&target_path, &backup_path).with_context(|| {
+                format!(
+                    "backing up {} to {}",
+                    target_path.display(),
+                    backup_path.display()
+                )
+            })?;
+            backed_up.push(name.clone());
         }
 
         if let Some(parent) = target_path.parent() {
@@ -234,7 +271,7 @@ pub fn install(
         })?;
 
         files.push(InstalledFile {
-            path: target.to_string_lossy().replace('\\', "/"),
+            path: name,
             sha256: sha256(&target_path)?,
         });
     }
@@ -245,6 +282,7 @@ pub fn install(
         proxy_name: proxy_name.to_string(),
         installed_at: now_secs(),
         files,
+        backed_up,
     };
     manifest.write(dir)?;
     Ok(manifest)
@@ -278,6 +316,8 @@ pub struct UninstallReport {
     pub removed: Vec<String>,
     /// Files left alone because they changed since install.
     pub kept_modified: Vec<String>,
+    /// Pre-install originals put back from the backup folder.
+    pub restored: Vec<String>,
 }
 
 /// Removes a managed install. Files whose contents changed since installation
@@ -319,9 +359,53 @@ pub fn uninstall(dir: &Path, keep_ini: bool) -> Result<UninstallReport> {
         report.removed.push(file.path.clone());
     }
 
+    // Put displaced originals back where they were, unless a kept-modified
+    // file of ours still occupies the spot — the user's edit wins, and the
+    // backup stays available on disk.
+    for name in &manifest.backed_up {
+        let backup_path = dir.join(BACKUP_DIR).join(name);
+        if !backup_path.is_file() {
+            continue;
+        }
+        let original = dir.join(name);
+        if original.exists() {
+            continue;
+        }
+        if let Some(parent) = original.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&backup_path, &original)
+            .with_context(|| format!("restoring {}", original.display()))?;
+        report.restored.push(name.clone());
+    }
+    remove_empty_tree(&dir.join(BACKUP_DIR));
+
     std::fs::remove_file(dir.join(MANIFEST_NAME)).ok();
     remove_empty_dirs(dir, &manifest);
     Ok(report)
+}
+
+/// Removes a directory tree that contains only empty directories; anything
+/// holding a file survives untouched.
+fn remove_empty_tree(root: &Path) {
+    fn is_empty_after_cleanup(dir: &Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        let mut empty = true;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && is_empty_after_cleanup(&path) {
+                let _ = std::fs::remove_dir(&path);
+            } else {
+                empty = false;
+            }
+        }
+        empty
+    }
+    if root.is_dir() && is_empty_after_cleanup(root) {
+        let _ = std::fs::remove_dir(root);
+    }
 }
 
 /// Cleans up directories the install created, deepest first, stopping at any
@@ -486,6 +570,91 @@ mod tests {
         assert!(
             !game.path().join("plugins").exists(),
             "empty plugins dir cleaned up"
+        );
+    }
+
+    #[test]
+    fn backs_up_a_foreign_proxy_and_restores_it_on_uninstall() {
+        let payload = payload();
+        let game = tempfile::tempdir().unwrap();
+        // ReShade got there first.
+        std::fs::write(game.path().join("dxgi.dll"), b"reshade").unwrap();
+
+        let manifest = install(payload.path(), game.path(), "dxgi.dll", "v0.9.4").unwrap();
+        assert_eq!(manifest.backed_up, vec!["dxgi.dll"]);
+        assert_eq!(
+            std::fs::read(game.path().join(BACKUP_DIR).join("dxgi.dll")).unwrap(),
+            b"reshade",
+            "the original is parked in the backup folder"
+        );
+        assert_eq!(
+            std::fs::read(game.path().join("dxgi.dll")).unwrap(),
+            b"optiscaler dll",
+            "ours is the live one"
+        );
+
+        let report = uninstall(game.path(), false).unwrap();
+        assert_eq!(report.restored, vec!["dxgi.dll"]);
+        assert_eq!(
+            std::fs::read(game.path().join("dxgi.dll")).unwrap(),
+            b"reshade",
+            "the original is back"
+        );
+        assert!(
+            !game.path().join(BACKUP_DIR).exists(),
+            "backup folder cleaned up"
+        );
+    }
+
+    #[test]
+    fn updates_carry_the_backup_forward() {
+        let payload = payload();
+        let game = tempfile::tempdir().unwrap();
+        std::fs::write(game.path().join("dxgi.dll"), b"reshade").unwrap();
+
+        install(payload.path(), game.path(), "dxgi.dll", "v0.9.3").unwrap();
+        let updated = install(payload.path(), game.path(), "dxgi.dll", "v0.9.4").unwrap();
+        assert_eq!(
+            updated.backed_up,
+            vec!["dxgi.dll"],
+            "not re-backed-up over the original"
+        );
+        assert_eq!(
+            std::fs::read(game.path().join(BACKUP_DIR).join("dxgi.dll")).unwrap(),
+            b"reshade",
+            "the true original survives the update"
+        );
+
+        uninstall(game.path(), false).unwrap();
+        assert_eq!(
+            std::fs::read(game.path().join("dxgi.dll")).unwrap(),
+            b"reshade"
+        );
+    }
+
+    #[test]
+    fn a_user_modified_file_keeps_its_spot_over_the_backup() {
+        let payload = payload();
+        let game = tempfile::tempdir().unwrap();
+        std::fs::write(game.path().join("dxgi.dll"), b"reshade").unwrap();
+        install(payload.path(), game.path(), "dxgi.dll", "v0.9.4").unwrap();
+
+        // The user replaced our dll with their own build after installing.
+        std::fs::write(game.path().join("dxgi.dll"), b"user build").unwrap();
+
+        let report = uninstall(game.path(), false).unwrap();
+        assert_eq!(report.kept_modified, vec!["dxgi.dll"]);
+        assert!(
+            report.restored.is_empty(),
+            "restore must not clobber the user's file"
+        );
+        assert_eq!(
+            std::fs::read(game.path().join("dxgi.dll")).unwrap(),
+            b"user build"
+        );
+        assert!(
+            game.path().join(BACKUP_DIR).join("dxgi.dll").is_file(),
+            "the original stays recoverable on disk"
         );
     }
 

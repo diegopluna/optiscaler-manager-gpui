@@ -183,6 +183,7 @@ impl gpui::Render for GameDetail {
         let install = status.map(|s| s.install.clone());
         let anticheat = status.map(|s| s.anticheat.clone()).unwrap_or_default();
         let anticheat_names = status.map(|s| s.anticheat_names()).unwrap_or_default();
+        let conflicts = status.and_then(|s| s.conflicts.clone());
         let optipatcher_supported = status.and_then(|s| s.optipatcher_supported.clone());
         let optipatcher_installed = status.is_some_and(|s| s.optipatcher_installed);
         let gpu = state.gpu.clone();
@@ -567,6 +568,66 @@ impl gpui::Render for GameDetail {
                                     .child("Install OptiScaler first; OptiPatcher loads through it."),
                             )
                         }),
+                )
+            })
+            .when_some(conflicts, |this, files| {
+                this.child(
+                    v_flex()
+                        .gap_1()
+                        .p_2()
+                        .rounded(cx.theme().radius)
+                        .border_1()
+                        .border_color(cx.theme().warning)
+                        .bg(cx.theme().warning.opacity(0.12))
+                        .child(div().text_sm().child(
+                            "These files are already in the game and were not put \
+                             there by this app — another mod like ReShade may own them:",
+                        ))
+                        .children(files.iter().map(|file| {
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!("  {file}"))
+                        }))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(
+                                    "Continuing moves them into optiscaler-manager.backup \
+                                     and puts them back on uninstall. The mod they belong \
+                                     to will not work while OptiScaler is installed.",
+                                ),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .pt_1()
+                                .child(
+                                    Button::new("confirm-conflicts")
+                                        .small()
+                                        .primary()
+                                        .label("Back up and continue")
+                                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                            let id = this.game_id.clone();
+                                            this.state.update(cx, |state, cx| {
+                                                state.install_confirmed(&id, cx)
+                                            });
+                                        })),
+                                )
+                                .child(
+                                    Button::new("cancel-conflicts")
+                                        .small()
+                                        .outline()
+                                        .label("Cancel")
+                                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                            let id = this.game_id.clone();
+                                            this.state.update(cx, |state, cx| {
+                                                state.dismiss_conflicts(&id, cx)
+                                            });
+                                        })),
+                                ),
+                        ),
                 )
             })
             .when_some(error, |this, message| {

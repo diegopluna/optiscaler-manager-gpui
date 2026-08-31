@@ -31,6 +31,9 @@ primary target; Linux is supported and macOS runs for development.
   dropdown, read its changelog in the app, and install it: the `.7z` is
   downloaded once, extracted, and copied into the game with `OptiScaler.dll`
   renamed to the proxy DLL the game loads (`dxgi.dll` by default).
+- **Backs up what it displaces.** A dxgi.dll that ReShade or another mod
+  put there first is flagged before installing, moved into a backup folder
+  in the game with your go-ahead, and put back on uninstall.
 - **Tracks what it installed.** Every install writes a manifest listing each
   file and its hash, so uninstall removes exactly what was added and leaves
   anything you edited in place. The catalog tags each game with the version it

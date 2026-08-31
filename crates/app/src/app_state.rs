@@ -8,6 +8,12 @@ use opti_core::optiscaler::{InstallStatus, Release, install as installer};
 use opti_core::update::{Applied, UpdateCheck, UpdateInfo};
 use opti_core::{Game, GameId, Settings};
 
+/// What the background install work produced.
+enum InstallFlow {
+    Done(Box<opti_core::optiscaler::install::InstallManifest>),
+    NeedsConfirmation(Vec<String>),
+}
+
 /// How many covers to download at once. Enough to keep the grid filling in
 /// quickly without hammering the CDN.
 const ARTWORK_LANES: usize = 4;
@@ -54,6 +60,8 @@ pub struct GameStatus {
     /// Anti-cheat software found in the game. Empty means nothing was found
     /// on disk, which does not rule out server-side systems like VAC.
     pub anticheat: Vec<Detection>,
+    /// Files an install would displace, waiting for the user's go-ahead.
+    pub conflicts: Option<Vec<String>>,
     /// The supported executable name when OptiPatcher can patch this game.
     pub optipatcher_supported: Option<String>,
     pub optipatcher_installed: bool,
@@ -465,6 +473,7 @@ impl AppState {
                             target_dir,
                             install,
                             anticheat,
+                            conflicts: None,
                             optipatcher_supported,
                             optipatcher_installed,
                             busy: None,
@@ -479,8 +488,27 @@ impl AppState {
         .detach();
     }
 
-    /// Downloads (if needed) and installs OptiScaler into a game.
+    /// Downloads (if needed) and installs OptiScaler into a game. When the
+    /// install would displace files that are not ours, it stops and parks
+    /// them on the status for the UI to confirm.
     pub fn install(&mut self, id: &GameId, cx: &mut Context<Self>) {
+        self.install_inner(id, false, cx);
+    }
+
+    /// Proceeds past a parked conflict: the files are backed up, replaced,
+    /// and restored on uninstall.
+    pub fn install_confirmed(&mut self, id: &GameId, cx: &mut Context<Self>) {
+        self.install_inner(id, true, cx);
+    }
+
+    pub fn dismiss_conflicts(&mut self, id: &GameId, cx: &mut Context<Self>) {
+        if let Some(status) = self.statuses.get_mut(id) {
+            status.conflicts = None;
+        }
+        cx.notify();
+    }
+
+    fn install_inner(&mut self, id: &GameId, confirmed: bool, cx: &mut Context<Self>) {
         let Some(release) = self.release_for(id).cloned() else {
             self.set_error(id, "No OptiScaler release available yet.".into(), cx);
             return;
@@ -504,13 +532,21 @@ impl AppState {
         let dlss_inputs = self.dlss_inputs_enabled(&id);
         let work = cx.background_spawn(async move {
             let payload = opti_core::optiscaler::prepare_payload(&release, |_, _| {})?;
+
+            if !confirmed {
+                let found = installer::conflicts(&payload, &target, &proxy)?;
+                if !found.is_empty() {
+                    return anyhow::Ok(InstallFlow::NeedsConfirmation(found));
+                }
+            }
+
             let manifest = installer::install(&payload, &target, &proxy, &release.tag)?;
             // The shipped default (spoofing on for AMD/Intel) is only ever
             // changed when the user opted out of DLSS inputs.
             if !dlss_inputs {
                 opti_core::optiscaler::ini_edit::set_dxgi_spoofing(&target, false)?;
             }
-            anyhow::Ok(manifest)
+            anyhow::Ok(InstallFlow::Done(Box::new(manifest)))
         });
 
         cx.spawn(async move |this, cx| {
@@ -519,9 +555,14 @@ impl AppState {
                 if let Some(status) = this.statuses.get_mut(&id) {
                     status.busy = None;
                     match result {
-                        Ok(manifest) => {
+                        Ok(InstallFlow::Done(manifest)) => {
                             log::info!("installed {} into {}", manifest.release_tag, id);
-                            status.install = InstallStatus::Managed(Box::new(manifest));
+                            status.conflicts = None;
+                            status.install = InstallStatus::Managed(manifest);
+                        }
+                        Ok(InstallFlow::NeedsConfirmation(found)) => {
+                            log::info!("{id}: install paused on conflicts: {found:?}");
+                            status.conflicts = Some(found);
                         }
                         Err(err) => {
                             log::error!("install failed for {id}: {err:#}");
