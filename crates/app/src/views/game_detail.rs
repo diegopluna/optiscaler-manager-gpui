@@ -184,6 +184,8 @@ impl gpui::Render for GameDetail {
         let anticheat = status.map(|s| s.anticheat.clone()).unwrap_or_default();
         let anticheat_names = status.map(|s| s.anticheat_names()).unwrap_or_default();
         let conflicts = status.and_then(|s| s.conflicts.clone());
+        let upscaler_files = status.map(|s| s.upscalers.clone()).unwrap_or_default();
+        let upscaler_techs = opti_core::upscalers::techs(&upscaler_files);
         let optipatcher_supported = status.and_then(|s| s.optipatcher_supported.clone());
         let optipatcher_installed = status.is_some_and(|s| s.optipatcher_installed);
         let gpu = state.gpu.clone();
@@ -359,6 +361,43 @@ impl gpui::Render for GameDetail {
                                     .update(cx, |state, cx| state.set_proxy_name(&id, name, cx));
                             })),
                     ),
+            )
+            .child(
+                v_flex()
+                    .gap_0p5()
+                    .map(|this| {
+                        if upscaler_techs.is_empty() {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().warning)
+                                    .child(
+                                        "No upscaler DLLs found in this game. OptiScaler \
+                                         hooks a game's existing DLSS/FSR/XeSS inputs, so it \
+                                         will most likely do nothing here.",
+                                    ),
+                            )
+                        } else {
+                            let labels = upscaler_techs
+                                .iter()
+                                .map(|tech| tech.label())
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            this.child(div().text_sm().child(format!(
+                                "Ships {labels} — OptiScaler has inputs to hook."
+                            )))
+                            .children(upscaler_files.iter().take(4).map(|detection| {
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!(
+                                        "{}: {}",
+                                        detection.tech.label(),
+                                        detection.file.display()
+                                    ))
+                            }))
+                        }
+                    }),
             )
             .when_some(gpu, |this, gpu| {
                 let needs_spoofing = gpu.vendor.needs_spoofing();

@@ -17,6 +17,11 @@ primary target; Linux is supported and macOS runs for development.
 - **Shows cover art** from Steam's CDN, or SteamGridDB for non-Steam games once
   you add a free API key in Settings. Anything unmatched gets a generated
   placeholder, and every cover is cached on disk.
+- **Shows what each game ships.** Cards carry DLSS / FSR / XeSS badges
+  from the upscaler runtime DLLs found in the game's own files — the
+  inputs OptiScaler can hook — and a game with none is called out, since
+  OptiScaler will mostly do nothing there. The app's own installed files
+  are excluded from the scan.
 - **Knows your GPU.** The vendor is detected (registry on Windows, sysfs
   on Linux) and shown per game; AMD and Intel users get a per-game "use
   DLSS inputs" switch — the one spoofing decision OptiScaler's own setup

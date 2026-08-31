@@ -105,6 +105,22 @@ pub fn game_card(
         )
     });
 
+    // Which upscalers the game itself ships — where OptiScaler has inputs to
+    // hook. Quiet styling: information, not a warning.
+    let tech_tags: Vec<Div> = status
+        .map(|status| opti_core::upscalers::techs(&status.upscalers))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|tech| {
+            tag(
+                tech.label().to_string(),
+                cx.theme().secondary,
+                cx.theme().secondary_foreground,
+                None,
+            )
+        })
+        .collect();
+
     v_flex()
         .id(gpui::ElementId::Name(game.id.as_str().to_string().into()))
         .w(px(CARD_WIDTH))
@@ -131,6 +147,14 @@ pub fn game_card(
                         .items_start()
                         .children(anticheat_tag)
                         .children(install_tag),
+                )
+                .child(
+                    h_flex()
+                        .absolute()
+                        .bottom_1()
+                        .left_1()
+                        .gap_1()
+                        .children(tech_tags),
                 ),
         )
         .child(

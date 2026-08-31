@@ -13,6 +13,7 @@ pub mod paths;
 pub mod settings;
 pub mod text;
 pub mod update;
+pub mod upscalers;
 pub mod vdf;
 
 pub use detect::detect_all;

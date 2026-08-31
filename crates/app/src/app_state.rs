@@ -62,6 +62,8 @@ pub struct GameStatus {
     pub anticheat: Vec<Detection>,
     /// Files an install would displace, waiting for the user's go-ahead.
     pub conflicts: Option<Vec<String>>,
+    /// Upscaler runtime DLLs the game itself ships (ours excluded).
+    pub upscalers: Vec<opti_core::upscalers::Detection>,
     /// The supported executable name when OptiPatcher can patch this game.
     pub optipatcher_supported: Option<String>,
     pub optipatcher_installed: bool,
@@ -429,6 +431,17 @@ impl AppState {
                     );
                     let optipatcher_installed =
                         opti_core::optiscaler::optipatcher::is_installed(&target);
+                    // Files we installed must not read as the game's own
+                    // upscaler support; the manifest lists exactly those.
+                    let ours: std::collections::HashSet<std::path::PathBuf> = match &install {
+                        InstallStatus::Managed(manifest) => manifest
+                            .files
+                            .iter()
+                            .map(|file| target.join(&file.path))
+                            .collect(),
+                        _ => Default::default(),
+                    };
+                    let upscalers = opti_core::upscalers::scan(&game.install_dir, &ours);
                     (
                         game.id,
                         target,
@@ -436,6 +449,7 @@ impl AppState {
                         anticheat,
                         optipatcher_supported,
                         optipatcher_installed,
+                        upscalers,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -451,11 +465,22 @@ impl AppState {
                     anticheat,
                     optipatcher_supported,
                     optipatcher_installed,
+                    upscalers,
                 ) in results
                 {
                     // Do not stomp on a game that is mid-install.
                     if this.statuses.get(&id).is_some_and(GameStatus::is_busy) {
                         continue;
+                    }
+                    if !upscalers.is_empty() {
+                        log::info!(
+                            "{id}: ships {}",
+                            opti_core::upscalers::techs(&upscalers)
+                                .iter()
+                                .map(|tech| tech.label())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
                     }
                     if !anticheat.is_empty() {
                         log::info!(
@@ -474,6 +499,7 @@ impl AppState {
                             install,
                             anticheat,
                             conflicts: None,
+                            upscalers,
                             optipatcher_supported,
                             optipatcher_installed,
                             busy: None,
