@@ -147,7 +147,7 @@ mod tests {
         let game = temp.path().join("Stray");
         std::fs::create_dir_all(&game).unwrap();
 
-        let first = manual_games(&[game.clone()]);
+        let first = manual_games(std::slice::from_ref(&game));
         let second = manual_games(&[game]);
         assert_eq!(
             first[0].id, second[0].id,
