@@ -20,7 +20,7 @@ impl Store {
             Store::Steam => "Steam",
             Store::Epic => "Epic Games",
             Store::Xbox => "Xbox",
-            Store::Manual => "Manual",
+            Store::Manual => "Custom",
         }
     }
 

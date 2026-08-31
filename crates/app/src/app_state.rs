@@ -171,6 +171,50 @@ impl AppState {
         cx.notify();
     }
 
+    /// Adds a single game folder. Returns an error message instead when the
+    /// path is unusable or already covered.
+    pub fn add_manual_game(&mut self, dir: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
+        if !dir.is_dir() {
+            return Err(format!("{} is not a folder", dir.display()));
+        }
+        if opti_core::detect::is_store_detected(&self.games, &dir) {
+            return Err("That game is already detected from its store.".into());
+        }
+        if self.settings.manual_games.contains(&dir) {
+            return Err("That folder is already in the list.".into());
+        }
+        self.settings.manual_games.push(dir);
+        self.save_settings();
+        self.rescan(cx);
+        Ok(())
+    }
+
+    pub fn remove_manual_game(&mut self, dir: &PathBuf, cx: &mut Context<Self>) {
+        self.settings.manual_games.retain(|d| d != dir);
+        self.save_settings();
+        self.rescan(cx);
+    }
+
+    /// Adds a library folder whose subdirectories are scanned as games.
+    pub fn add_scan_folder(&mut self, dir: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
+        if !dir.is_dir() {
+            return Err(format!("{} is not a folder", dir.display()));
+        }
+        if self.settings.scan_folders.contains(&dir) {
+            return Err("That folder is already scanned.".into());
+        }
+        self.settings.scan_folders.push(dir);
+        self.save_settings();
+        self.rescan(cx);
+        Ok(())
+    }
+
+    pub fn remove_scan_folder(&mut self, dir: &PathBuf, cx: &mut Context<Self>) {
+        self.settings.scan_folders.retain(|d| d != dir);
+        self.save_settings();
+        self.rescan(cx);
+    }
+
     pub fn set_steamgriddb_key(&mut self, key: Option<String>, cx: &mut Context<Self>) {
         self.settings.steamgriddb_key = key;
         self.save_settings();
@@ -193,7 +237,10 @@ impl AppState {
         self.scan = ScanState::Scanning;
         cx.notify();
 
-        let scan = cx.background_spawn(async move { opti_core::detect_all() });
+        let manual_dirs = self.settings.manual_games.clone();
+        let scan_folders = self.settings.scan_folders.clone();
+        let scan =
+            cx.background_spawn(async move { opti_core::detect_all(&manual_dirs, &scan_folders) });
 
         cx.spawn(async move |this, cx| {
             let games = scan.await;

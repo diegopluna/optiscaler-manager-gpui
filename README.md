@@ -11,7 +11,9 @@ primary target; Linux is supported and macOS runs for development.
 
 ## What it does
 
-- **Finds games** from Steam, the Epic Games Launcher and the Xbox app.
+- **Finds games** from Steam, the Epic Games Launcher and the Xbox app —
+  and anything else via Settings: add single game folders, or library
+  folders (GOG, EA, DRM-free) whose subfolders are scanned as games.
 - **Shows cover art** from Steam's CDN, or SteamGridDB for non-Steam games once
   you add a free API key in Settings. Anything unmatched gets a generated
   placeholder, and every cover is cached on disk.
