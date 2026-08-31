@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod github;
+pub mod ini_edit;
 pub mod install;
 pub mod optipatcher;
 

@@ -151,46 +151,10 @@ pub fn install(dir: &Path) -> Result<Vec<PathBuf>> {
     }
     std::fs::rename(&temp, &asi_path)?;
 
-    enable_asi_loading(&ini_path)
+    super::ini_edit::set_ini_value(&ini_path, "Plugins", "LoadAsiPlugins", "true")
         .with_context(|| format!("enabling ASI loading in {}", ini_path.display()))?;
 
     Ok(vec![PathBuf::from(ASI_RELATIVE_PATH)])
-}
-
-/// Flips `LoadAsiPlugins` to `true` in an `OptiScaler.ini`, touching only that
-/// one line — the same minimal edit the official setup script makes.
-fn enable_asi_loading(ini_path: &Path) -> Result<()> {
-    let source = std::fs::read_to_string(ini_path)?;
-
-    let mut changed = false;
-    let updated: Vec<String> = source
-        .lines()
-        .map(|line| {
-            let trimmed = line.trim_start();
-            if let Some(value) = trimmed.strip_prefix("LoadAsiPlugins=")
-                && !value.trim().eq_ignore_ascii_case("true")
-            {
-                changed = true;
-                let indent = &line[..line.len() - trimmed.len()];
-                format!("{indent}LoadAsiPlugins=true")
-            } else {
-                line.to_string()
-            }
-        })
-        .collect();
-
-    if !changed {
-        // Already enabled, or the key is missing entirely; the latter would
-        // mean a very old or hand-edited ini, and OptiScaler defaults cover it.
-        return Ok(());
-    }
-
-    let mut text = updated.join("\n");
-    if source.ends_with('\n') {
-        text.push('\n');
-    }
-    std::fs::write(ini_path, text)?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -258,26 +222,5 @@ mod tests {
         let unsupported = tempfile::tempdir().unwrap();
         std::fs::write(unsupported.path().join("game.exe"), b"").unwrap();
         assert_eq!(matching_exe(unsupported.path(), &supported), None);
-    }
-
-    #[test]
-    fn enables_asi_loading_and_touches_nothing_else() {
-        let temp = tempfile::tempdir().unwrap();
-        let ini = temp.path().join("OptiScaler.ini");
-        let source = "; Load ASI plugins\n; true or false - Default (auto) is false\nLoadAsiPlugins=auto\n\n[Menu]\nScale=auto\n";
-        std::fs::write(&ini, source).unwrap();
-
-        enable_asi_loading(&ini).unwrap();
-
-        let updated = std::fs::read_to_string(&ini).unwrap();
-        assert_eq!(
-            updated,
-            source.replace("LoadAsiPlugins=auto", "LoadAsiPlugins=true"),
-            "exactly one value changes"
-        );
-
-        // Running again is a no-op.
-        enable_asi_loading(&ini).unwrap();
-        assert_eq!(std::fs::read_to_string(&ini).unwrap(), updated);
     }
 }

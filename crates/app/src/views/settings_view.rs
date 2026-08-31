@@ -379,6 +379,15 @@ impl Render for SettingsView {
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
                             .child(format!("{game_count} games detected")),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(match &self.state.read(cx).gpu {
+                                Some(gpu) => format!("GPU: {gpu}"),
+                                None => "GPU: not detected".to_string(),
+                            }),
                     ),
             )
     }

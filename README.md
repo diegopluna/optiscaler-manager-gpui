@@ -17,6 +17,10 @@ primary target; Linux is supported and macOS runs for development.
 - **Shows cover art** from Steam's CDN, or SteamGridDB for non-Steam games once
   you add a free API key in Settings. Anything unmatched gets a generated
   placeholder, and every cover is cached on disk.
+- **Knows your GPU.** The vendor is detected (registry on Windows, sysfs
+  on Linux) and shown per game; AMD and Intel users get a per-game "use
+  DLSS inputs" switch — the one spoofing decision OptiScaler's own setup
+  script asks about — applied at install time and editable afterwards.
 - **Flags anti-cheat** before you install. Games shipping Easy Anti-Cheat,
   BattlEye, PunkBuster and a dozen others are tagged in the catalog and carry a
   warning on their page, because OptiScaler loads itself into the game the same

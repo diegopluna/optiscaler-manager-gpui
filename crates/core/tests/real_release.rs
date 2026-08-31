@@ -57,6 +57,19 @@ fn downloads_extracts_and_installs_the_latest_release() {
         Some(release.tag.as_str())
     );
 
+    // The AMD/Intel opt-out edits the real shipped ini: exactly one key in
+    // [Spoofing] flips, and its prefix-sharing siblings stay untouched.
+    opti_core::optiscaler::ini_edit::set_dxgi_spoofing(game.path(), false)
+        .expect("disabling spoofing in the shipped ini");
+    let ini = std::fs::read_to_string(game.path().join(archive::PAYLOAD_INI)).unwrap();
+    assert!(ini.contains("Dxgi=false"));
+    assert!(
+        ini.contains("DxgiFactoryWrapping=auto"),
+        "sibling keys untouched"
+    );
+    opti_core::optiscaler::ini_edit::set_dxgi_spoofing(game.path(), true)
+        .expect("re-enabling spoofing");
+
     let report = install::uninstall(game.path(), false).expect("uninstalling");
     assert!(
         report.kept_modified.is_empty(),

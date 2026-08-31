@@ -6,6 +6,7 @@ pub mod anticheat;
 pub mod artwork;
 pub mod detect;
 pub mod exe_heuristics;
+pub mod gpu;
 pub mod model;
 pub mod optiscaler;
 pub mod paths;

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use gpui::{App, AppContext, Context, Entity};
 use opti_core::anticheat::Detection;
+use opti_core::gpu::GpuInfo;
 use opti_core::optiscaler::{InstallStatus, Release, install as installer};
 use opti_core::update::{Applied, UpdateCheck, UpdateInfo};
 use opti_core::{Game, GameId, Settings};
@@ -93,6 +94,8 @@ pub struct AppState {
     /// Lowercase executable names OptiPatcher supports, once fetched.
     optipatcher_exes: Option<Vec<String>>,
     pub update: UpdateState,
+    /// The GPU games render on, when detection recognised one.
+    pub gpu: Option<GpuInfo>,
     /// Release tag the user picked per game; absent means "use the newest".
     selected_release: HashMap<GameId, String>,
 }
@@ -110,10 +113,12 @@ impl AppState {
             selected_release: HashMap::new(),
             optipatcher_exes: None,
             update: UpdateState::Idle,
+            gpu: None,
         };
         this.rescan(cx);
         this.refresh_releases(cx);
         this.refresh_optipatcher_list(cx);
+        this.detect_gpu(cx);
         this
     }
 
@@ -308,6 +313,68 @@ impl AppState {
         cx.notify();
     }
 
+    /// Detects the GPU once at startup; registry/sysfs reads, so background.
+    fn detect_gpu(&mut self, cx: &mut Context<Self>) {
+        let detect = cx.background_spawn(async move { opti_core::gpu::detect() });
+        cx.spawn(async move |this, cx| {
+            let gpu = detect.await;
+            this.update(cx, |this, cx| {
+                if let Some(gpu) = &gpu {
+                    log::info!("detected GPU: {gpu}");
+                }
+                this.gpu = gpu;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Whether DLSS inputs (Nvidia spoofing) are enabled for a game. On by
+    /// default, matching OptiScaler's own setup script.
+    pub fn dlss_inputs_enabled(&self, id: &GameId) -> bool {
+        !self.settings.dlss_inputs_disabled.contains(id)
+    }
+
+    /// Flips the DLSS-inputs choice for a game. Persisted always; when the
+    /// game already has a managed install, its ini is edited right away.
+    pub fn set_dlss_inputs(&mut self, id: &GameId, enabled: bool, cx: &mut Context<Self>) {
+        if enabled {
+            self.settings.dlss_inputs_disabled.retain(|d| d != id);
+        } else if !self.settings.dlss_inputs_disabled.contains(id) {
+            self.settings.dlss_inputs_disabled.push(id.clone());
+        }
+        self.save_settings();
+
+        let Some(status) = self.statuses.get(id) else {
+            cx.notify();
+            return;
+        };
+        if !matches!(status.install, InstallStatus::Managed(_)) {
+            cx.notify();
+            return;
+        }
+
+        let target = status.target_dir.clone();
+        let id = id.clone();
+        let work = cx.background_spawn(async move {
+            opti_core::optiscaler::ini_edit::set_dxgi_spoofing(&target, enabled)
+        });
+        cx.spawn(async move |this, cx| {
+            let result = work.await;
+            this.update(cx, |this, cx| {
+                if let Err(err) = result
+                    && let Some(status) = this.statuses.get_mut(&id)
+                {
+                    status.error = Some(format!("{err:#}"));
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// Fetches OptiPatcher's supported-game list in the background. Statuses
     /// are recomputed when it lands so the catalog can flag supported games.
     fn refresh_optipatcher_list(&mut self, cx: &mut Context<Self>) {
@@ -434,9 +501,16 @@ impl AppState {
         status.error = None;
         cx.notify();
 
+        let dlss_inputs = self.dlss_inputs_enabled(&id);
         let work = cx.background_spawn(async move {
             let payload = opti_core::optiscaler::prepare_payload(&release, |_, _| {})?;
-            installer::install(&payload, &target, &proxy, &release.tag)
+            let manifest = installer::install(&payload, &target, &proxy, &release.tag)?;
+            // The shipped default (spoofing on for AMD/Intel) is only ever
+            // changed when the user opted out of DLSS inputs.
+            if !dlss_inputs {
+                opti_core::optiscaler::ini_edit::set_dxgi_spoofing(&target, false)?;
+            }
+            anyhow::Ok(manifest)
         });
 
         cx.spawn(async move |this, cx| {

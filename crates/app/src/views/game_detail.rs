@@ -11,6 +11,7 @@ use gpui_component::{
     input::{Input, InputState},
     scroll::ScrollableElement,
     select::{Select, SelectEvent, SelectState},
+    switch::Switch,
     v_flex,
 };
 use opti_core::GameId;
@@ -184,6 +185,8 @@ impl gpui::Render for GameDetail {
         let anticheat_names = status.map(|s| s.anticheat_names()).unwrap_or_default();
         let optipatcher_supported = status.and_then(|s| s.optipatcher_supported.clone());
         let optipatcher_installed = status.is_some_and(|s| s.optipatcher_installed);
+        let gpu = state.gpu.clone();
+        let dlss_inputs = state.dlss_inputs_enabled(&self.game_id);
 
         let (status_label, status_detail) = match &install {
             Some(InstallStatus::Managed(manifest)) => (
@@ -356,6 +359,60 @@ impl gpui::Render for GameDetail {
                             })),
                     ),
             )
+            .when_some(gpu, |this, gpu| {
+                let needs_spoofing = gpu.vendor.needs_spoofing();
+                this.child(
+                    v_flex()
+                        .gap_1()
+                        .child(div().text_sm().child(format!("GPU: {gpu}")))
+                        .map(|this| {
+                            if needs_spoofing {
+                                this.child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            Switch::new("dlss-inputs")
+                                                .label("Use DLSS inputs (spoofs an Nvidia GPU)")
+                                                .checked(dlss_inputs)
+                                                .on_click(cx.listener(
+                                                    |this, checked: &bool, _, cx| {
+                                                        let id = this.game_id.clone();
+                                                        let enabled = *checked;
+                                                        this.state.update(cx, |state, cx| {
+                                                            state.set_dlss_inputs(
+                                                                &id, enabled, cx,
+                                                            )
+                                                        });
+                                                    },
+                                                )),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(
+                                            "Lets games show their DLSS and DLSS frame \
+                                             generation options so OptiScaler can take them \
+                                             over. Turn off only if spoofing causes problems \
+                                             in this game.",
+                                        ),
+                                )
+                            } else {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(
+                                            "Nvidia GPU — DLSS inputs work natively, no \
+                                             spoofing needed.",
+                                        ),
+                                )
+                            }
+                        }),
+                )
+            })
             .child(
                 v_flex()
                     .gap_1()

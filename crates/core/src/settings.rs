@@ -21,6 +21,9 @@ pub struct Settings {
     pub proxy_names: BTreeMap<GameId, String>,
     /// Set once the user has acknowledged the anti-cheat warning.
     pub anticheat_warning_acknowledged: bool,
+    /// Games where the user turned DLSS inputs (Nvidia spoofing) off.
+    /// Relevant on AMD/Intel GPUs only; absent means the default, on.
+    pub dlss_inputs_disabled: Vec<GameId>,
     /// Game folders the user added by hand, one game each.
     pub manual_games: Vec<PathBuf>,
     /// Library folders whose subdirectories are scanned as game installs,
