@@ -9,7 +9,11 @@
 //! picked up on the next launch.
 
 use std::io::Write;
-use std::path::{Path, PathBuf};
+// `Path` only appears in the binary-swap path, which Windows does not compile
+// (updates there go through the installer instead).
+#[cfg(not(target_os = "windows"))]
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
