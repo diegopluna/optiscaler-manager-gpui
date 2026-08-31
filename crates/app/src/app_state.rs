@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use gpui::{App, AppContext, Context, Entity};
+use opti_core::anticheat::Detection;
 use opti_core::optiscaler::{InstallStatus, Release, install as installer};
 use opti_core::{Game, GameId, Settings};
 
@@ -29,6 +30,9 @@ pub struct GameStatus {
     /// The directory OptiScaler goes in, after any user override.
     pub target_dir: PathBuf,
     pub install: InstallStatus,
+    /// Anti-cheat software found in the game. Empty means nothing was found
+    /// on disk, which does not rule out server-side systems like VAC.
+    pub anticheat: Vec<Detection>,
     /// Set while an install or uninstall is running, describing the step.
     pub busy: Option<String>,
     pub error: Option<String>,
@@ -38,6 +42,19 @@ impl GameStatus {
     pub fn is_busy(&self) -> bool {
         self.busy.is_some()
     }
+
+    pub fn has_anticheat(&self) -> bool {
+        !self.anticheat.is_empty()
+    }
+
+    /// The detected systems, for a one-line summary.
+    pub fn anticheat_names(&self) -> String {
+        self.anticheat
+            .iter()
+            .map(|detection| detection.name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 /// Application-wide state, held in a single entity that every view observes.
@@ -45,11 +62,13 @@ pub struct AppState {
     pub games: Vec<Game>,
     pub scan: ScanState,
     pub settings: Settings,
-    /// The newest OptiScaler release, once it has been looked up.
-    pub latest_release: Option<Release>,
+    /// Published OptiScaler releases, newest first.
+    pub releases: Vec<Release>,
     pub release_error: Option<String>,
     artwork: HashMap<GameId, PathBuf>,
     statuses: HashMap<GameId, GameStatus>,
+    /// Release tag the user picked per game; absent means "use the newest".
+    selected_release: HashMap<GameId, String>,
 }
 
 impl AppState {
@@ -58,13 +77,14 @@ impl AppState {
             games: Vec::new(),
             scan: ScanState::Idle,
             settings: Settings::load(),
-            latest_release: None,
+            releases: Vec::new(),
             release_error: None,
             artwork: HashMap::new(),
             statuses: HashMap::new(),
+            selected_release: HashMap::new(),
         };
         this.rescan(cx);
-        this.refresh_latest_release(cx);
+        this.refresh_releases(cx);
         this
     }
 
@@ -161,21 +181,21 @@ impl AppState {
         .detach();
     }
 
-    /// Looks up the newest OptiScaler release so the UI can offer it.
-    pub fn refresh_latest_release(&mut self, cx: &mut Context<Self>) {
-        let lookup = cx.background_spawn(async move { opti_core::optiscaler::latest_release() });
+    /// Looks up the published OptiScaler releases so the user can pick one.
+    pub fn refresh_releases(&mut self, cx: &mut Context<Self>) {
+        let lookup = cx.background_spawn(async move { opti_core::optiscaler::list_releases() });
 
         cx.spawn(async move |this, cx| {
             let result = lookup.await;
             this.update(cx, |this, cx| {
                 match result {
-                    Ok(release) => {
-                        log::info!("latest OptiScaler release: {}", release.tag);
-                        this.latest_release = Some(release);
+                    Ok(releases) => {
+                        log::info!("found {} OptiScaler releases", releases.len());
+                        this.releases = releases;
                         this.release_error = None;
                     }
                     Err(err) => {
-                        log::warn!("could not look up latest release: {err:#}");
+                        log::warn!("could not list releases: {err:#}");
                         this.release_error = Some(format!("{err:#}"));
                     }
                 }
@@ -184,6 +204,32 @@ impl AppState {
             .ok();
         })
         .detach();
+    }
+
+    /// The newest stable release, which is what a game installs by default.
+    pub fn latest_release(&self) -> Option<&Release> {
+        self.releases
+            .iter()
+            .find(|release| !release.prerelease)
+            .or_else(|| self.releases.first())
+    }
+
+    /// The release a game will install: the user's pick, else the newest.
+    pub fn release_for(&self, id: &GameId) -> Option<&Release> {
+        match self.selected_release.get(id) {
+            Some(tag) => self
+                .releases
+                .iter()
+                .find(|release| &release.tag == tag)
+                .or_else(|| self.latest_release()),
+            None => self.latest_release(),
+        }
+    }
+
+    /// Pins a game to a specific OptiScaler release.
+    pub fn select_release(&mut self, id: &GameId, tag: &str, cx: &mut Context<Self>) {
+        self.selected_release.insert(id.clone(), tag.to_string());
+        cx.notify();
     }
 
     /// Works out each game's install directory and whether OptiScaler is in it.
@@ -200,7 +246,11 @@ impl AppState {
                         .cloned()
                         .unwrap_or_else(|| opti_core::exe_heuristics::install_target(&game));
                     let install = installer::status(&target);
-                    (game.id, target, install)
+                    // Scan the whole install, not just the target directory:
+                    // anti-cheat often sits beside the launcher, a level up
+                    // from the executable OptiScaler hooks.
+                    let anticheat = opti_core::anticheat::scan(&game.install_dir);
+                    (game.id, target, install, anticheat)
                 })
                 .collect::<Vec<_>>()
         });
@@ -208,16 +258,27 @@ impl AppState {
         cx.spawn(async move |this, cx| {
             let results = scan.await;
             this.update(cx, |this, cx| {
-                for (id, target_dir, install) in results {
+                for (id, target_dir, install, anticheat) in results {
                     // Do not stomp on a game that is mid-install.
                     if this.statuses.get(&id).is_some_and(GameStatus::is_busy) {
                         continue;
+                    }
+                    if !anticheat.is_empty() {
+                        log::info!(
+                            "{id}: anti-cheat detected ({})",
+                            anticheat
+                                .iter()
+                                .map(|d| d.name)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
                     }
                     this.statuses.insert(
                         id,
                         GameStatus {
                             target_dir,
                             install,
+                            anticheat,
                             busy: None,
                             error: None,
                         },
@@ -232,7 +293,7 @@ impl AppState {
 
     /// Downloads (if needed) and installs OptiScaler into a game.
     pub fn install(&mut self, id: &GameId, cx: &mut Context<Self>) {
-        let Some(release) = self.latest_release.clone() else {
+        let Some(release) = self.release_for(id).cloned() else {
             self.set_error(id, "No OptiScaler release available yet.".into(), cx);
             return;
         };

@@ -1,14 +1,16 @@
 use gpui::{
-    App, AppContext, ClickEvent, Context, Entity, IntoElement, ParentElement, Styled, Window, div,
-    img, prelude::FluentBuilder, px,
+    App, AppContext, ClickEvent, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    SharedString, Styled, Window, div, img, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, IconName, Selectable, Sizable,
+    ActiveTheme, Disableable, Icon, IconName, IndexPath, Selectable, Sizable,
     badge::Badge,
     button::{Button, ButtonGroup, ButtonVariants},
     divider::Divider,
     h_flex,
     input::{Input, InputState},
+    scroll::ScrollableElement,
+    select::{Select, SelectEvent, SelectState},
     v_flex,
 };
 use opti_core::GameId;
@@ -28,6 +30,11 @@ pub struct GameDetail {
     /// Editor for the install directory, built on the first render because
     /// creating an input needs a `Window`.
     dir_input: Option<Entity<InputState>>,
+    /// Picker for which OptiScaler release to install.
+    version_select: Option<Entity<SelectState<Vec<SharedString>>>>,
+    /// Release tags in the same order as the picker's entries.
+    version_tags: Vec<String>,
+    _subscriptions: Vec<gpui::Subscription>,
 }
 
 impl GameDetail {
@@ -37,6 +44,9 @@ impl GameDetail {
             state,
             game_id,
             dir_input: None,
+            version_select: None,
+            version_tags: Vec::new(),
+            _subscriptions: Vec::new(),
         }
     }
 
@@ -105,6 +115,62 @@ impl gpui::Render for GameDetail {
             }
         }
 
+        // Build the version picker once the release list has arrived.
+        let release_tags: Vec<String> = self
+            .state
+            .read(cx)
+            .releases
+            .iter()
+            .map(|release| release.tag.clone())
+            .collect();
+
+        if !release_tags.is_empty() && self.version_tags != release_tags {
+            let labels: Vec<SharedString> = self
+                .state
+                .read(cx)
+                .releases
+                .iter()
+                .map(|release| {
+                    if release.prerelease {
+                        SharedString::from(format!("{} (pre-release)", release.tag))
+                    } else {
+                        SharedString::from(release.tag.clone())
+                    }
+                })
+                .collect();
+
+            let current = self
+                .state
+                .read(cx)
+                .release_for(&self.game_id)
+                .map(|release| release.tag.clone());
+            let selected = current
+                .and_then(|tag| release_tags.iter().position(|t| t == &tag))
+                .unwrap_or(0);
+
+            let picker = cx.new(|cx| {
+                SelectState::new(labels, Some(IndexPath::default().row(selected)), window, cx)
+            });
+
+            self._subscriptions = vec![cx.subscribe(
+                &picker,
+                |this, picker, _: &SelectEvent<Vec<SharedString>>, cx| {
+                    let Some(ix) = picker.read(cx).selected_index(cx).map(|path| path.row) else {
+                        return;
+                    };
+                    let Some(tag) = this.version_tags.get(ix).cloned() else {
+                        return;
+                    };
+                    let id = this.game_id.clone();
+                    this.state
+                        .update(cx, |state, cx| state.select_release(&id, &tag, cx));
+                },
+            )];
+
+            self.version_select = Some(picker);
+            self.version_tags = release_tags;
+        }
+
         let state = self.state.read(cx);
         let Some(game) = state.game(&self.game_id).cloned() else {
             return div()
@@ -115,10 +181,12 @@ impl gpui::Render for GameDetail {
         let status = state.status_for(&self.game_id);
         let artwork = state.artwork_for(&self.game_id).map(|p| p.to_path_buf());
         let proxy_name = state.proxy_name_for(&self.game_id);
-        let latest = state.latest_release.clone();
+        let selected = state.release_for(&self.game_id).cloned();
         let busy = status.and_then(|s| s.busy.clone());
         let error = status.and_then(|s| s.error.clone());
         let install = status.map(|s| s.install.clone());
+        let anticheat = status.map(|s| s.anticheat.clone()).unwrap_or_default();
+        let anticheat_names = status.map(|s| s.anticheat_names()).unwrap_or_default();
 
         let (status_label, status_detail) = match &install {
             Some(InstallStatus::Managed(manifest)) => (
@@ -145,12 +213,23 @@ impl gpui::Render for GameDetail {
         let installed_tag = install
             .as_ref()
             .and_then(|i| i.version().map(str::to_string));
-        let update_available = matches!(
-            (&installed_tag, &latest),
+        // With a version picked, "install" means whatever differs from what is
+        // on disk, so switching versions can move backwards as well as forwards.
+        let differs_from_installed = matches!(
+            (&installed_tag, &selected),
             (Some(current), Some(release)) if current != &release.tag
         );
         let is_managed = matches!(install, Some(InstallStatus::Managed(_)));
-        let can_install = latest.is_some() && busy.is_none();
+        let can_install = selected.is_some() && busy.is_none();
+        let selected_tag = selected.as_ref().map(|r| r.tag.clone()).unwrap_or_default();
+        let selected_notes: Vec<String> = selected
+            .as_ref()
+            .map(|release| opti_core::text::markdown_to_plain(&release.notes))
+            .unwrap_or_default();
+        let selected_published = selected
+            .as_ref()
+            .map(|r| r.published_at.chars().take(10).collect::<String>())
+            .unwrap_or_default();
 
         let id_for_install = self.game_id.clone();
         let id_for_uninstall = self.game_id.clone();
@@ -280,6 +359,103 @@ impl gpui::Render for GameDetail {
                             })),
                     ),
             )
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(div().text_sm().child("OptiScaler version"))
+                            .children(
+                                self.version_select
+                                    .as_ref()
+                                    .map(|state| Select::new(state).small().w(px(220.))),
+                            )
+                            .when(!selected_published.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("released {selected_published}")),
+                                )
+                            }),
+                    )
+                    .when(!selected_notes.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .id("changelog")
+                                .mt_1()
+                                .p_2()
+                                .gap_0p5()
+                                .max_h(px(180.))
+                                .w_full()
+                                .overflow_hidden()
+                                .rounded(cx.theme().radius)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("What's new in {selected_tag}")),
+                                )
+                                .children(selected_notes.iter().map(|line| {
+                                    // Blank lines keep paragraphs apart.
+                                    if line.is_empty() {
+                                        div().h(px(6.))
+                                    } else {
+                                        div().text_xs().child(line.clone())
+                                    }
+                                }))
+                                .overflow_y_scrollbar(),
+                        )
+                    }),
+            )
+            .when(!anticheat.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .gap_1()
+                        .p_2()
+                        .rounded(cx.theme().radius)
+                        .border_1()
+                        .border_color(cx.theme().danger)
+                        .bg(cx.theme().danger.opacity(0.12))
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .text_color(cx.theme().danger)
+                                .child(Icon::new(IconName::TriangleAlert))
+                                .child(div().text_sm().child(format!(
+                                    "{anticheat_names} detected — installing OptiScaler \
+                                     here can get your account banned"
+                                ))),
+                        )
+                        .children(anticheat.iter().map(|detection| {
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!(
+                                    "{}: {}",
+                                    detection.name,
+                                    detection.evidence.display()
+                                ))
+                        })),
+                )
+            })
+            .when(anticheat.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(
+                            "No anti-cheat files found in this game. That does not cover \
+                             server-side systems such as VAC, so avoid OptiScaler in \
+                             anything you play online.",
+                        ),
+                )
+            })
             .when_some(error, |this, message| {
                 this.child(
                     div()
@@ -297,17 +473,14 @@ impl gpui::Render for GameDetail {
                     .child(
                         Button::new("install")
                             .primary()
-                            .disabled(!can_install || (is_managed && !update_available))
-                            .label(match (&busy, is_managed, update_available) {
+                            .disabled(!can_install || (is_managed && !differs_from_installed))
+                            .label(match (&busy, is_managed, differs_from_installed) {
                                 (Some(step), _, _) => step.clone(),
-                                (None, true, true) => format!(
-                                    "Update to {}",
-                                    latest.as_ref().map(|r| r.tag.as_str()).unwrap_or_default()
-                                ),
-                                (None, true, false) => "Up to date".to_string(),
-                                (None, false, _) => match &latest {
-                                    Some(release) => format!("Install {}", release.tag),
-                                    None => "Checking for releases…".to_string(),
+                                (None, true, true) => format!("Switch to {selected_tag}"),
+                                (None, true, false) => format!("{selected_tag} installed"),
+                                (None, false, _) => match selected.is_some() {
+                                    true => format!("Install {selected_tag}"),
+                                    false => "Checking for releases…".to_string(),
                                 },
                             })
                             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
@@ -346,10 +519,7 @@ impl gpui::Render for GameDetail {
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(format!(
-                        "OptiScaler will be loaded as {proxy_for_click}. Do not use it in \
-                         online games with anti-cheat."
-                    )),
+                    .child(format!("OptiScaler will be loaded as {proxy_for_click}.")),
             )
             .into_any_element()
     }

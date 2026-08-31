@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::releases_dir;
 
-const RELEASES_URL: &str = "https://api.github.com/repos/optiscaler/OptiScaler/releases";
+const RELEASES_URL: &str =
+    "https://api.github.com/repos/optiscaler/OptiScaler/releases?per_page=20";
 const USER_AGENT: &str = concat!("optiscaler-manager/", env!("CARGO_PKG_VERSION"));
 const TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -23,6 +24,8 @@ pub struct Release {
     pub download_url: String,
     pub size: u64,
     pub prerelease: bool,
+    /// The release notes, as the Markdown GitHub stores them.
+    pub notes: String,
 }
 
 impl Release {
@@ -89,6 +92,7 @@ fn parse_release(value: &serde_json::Value) -> Option<Release> {
         download_url: asset["browser_download_url"].as_str()?.to_string(),
         size: asset["size"].as_u64().unwrap_or(0),
         prerelease: value["prerelease"].as_bool().unwrap_or(false),
+        notes: value["body"].as_str().unwrap_or_default().to_string(),
     })
 }
 
@@ -171,6 +175,7 @@ mod tests {
                 "name": "OptiScaler v0.9.4",
                 "published_at": "2026-07-18T00:00:00Z",
                 "prerelease": {prerelease},
+                "body": "Adds FSR 4.1.1 support",
                 "assets": [{assets}]
             }}"#
         ))
@@ -200,6 +205,10 @@ mod tests {
         assert_eq!(release.asset_name, "Opti_0.9.4.7z");
         assert_eq!(release.size, 5000);
         assert!(!release.prerelease);
+        assert!(
+            release.notes.contains("FSR 4.1.1"),
+            "release notes are captured for the changelog"
+        );
     }
 
     #[test]

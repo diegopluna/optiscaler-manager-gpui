@@ -139,7 +139,7 @@ impl Render for GameGrid {
                                                     game_card(
                                                         game,
                                                         games.artwork_for(&game.id),
-                                                        false,
+                                                        games.status_for(&game.id),
                                                         cx,
                                                     )
                                                     .on_click(cx.listener(move |_, _, _, cx| {

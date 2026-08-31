@@ -15,12 +15,20 @@ primary target; Linux is supported and macOS runs for development.
 - **Shows cover art** from Steam's CDN, or SteamGridDB for non-Steam games once
   you add a free API key in Settings. Anything unmatched gets a generated
   placeholder, and every cover is cached on disk.
-- **Installs OptiScaler** from its latest GitHub release: downloads the `.7z`
-  once, extracts it, and copies it into the game with `OptiScaler.dll` renamed
-  to the proxy DLL the game loads (`dxgi.dll` by default).
+- **Flags anti-cheat** before you install. Games shipping Easy Anti-Cheat,
+  BattlEye, PunkBuster and a dozen others are tagged in the catalog and carry a
+  warning on their page, because OptiScaler loads itself into the game the same
+  way a cheat would and can get an account banned. A clean scan is reported as
+  "nothing found", never as "safe" — server-side systems like VAC leave nothing
+  on disk to detect.
+- **Installs any published OptiScaler version.** Pick a release from the
+  dropdown, read its changelog in the app, and install it: the `.7z` is
+  downloaded once, extracted, and copied into the game with `OptiScaler.dll`
+  renamed to the proxy DLL the game loads (`dxgi.dll` by default).
 - **Tracks what it installed.** Every install writes a manifest listing each
   file and its hash, so uninstall removes exactly what was added and leaves
-  anything you edited in place.
+  anything you edited in place. The catalog tags each game with the version it
+  has, or marks a hand-made install as "Manual".
 - **Edits the config.** The full `OptiScaler.ini` — every section and key — with
   the mod's own documentation shown inline and the right control per key.
   Saving preserves all ~1500 lines and comments; only changed values are
@@ -48,9 +56,10 @@ useful for unusual setups and for testing against a fixture library.
 cargo test --workspace
 ```
 
-Covers the VDF and manifest parsers, the exe-directory heuristics, install and
-uninstall against temporary directories, and a byte-identical round trip of the
-real shipped `OptiScaler.ini`.
+Covers the VDF and manifest parsers, the exe-directory heuristics, anti-cheat
+signature matching, changelog rendering, install and uninstall against
+temporary directories, and a byte-identical round trip of the real shipped
+`OptiScaler.ini`.
 
 One test is network-bound and ignored by default. It downloads the current
 OptiScaler release, extracts it and runs a full install/uninstall cycle — worth
@@ -62,6 +71,9 @@ cargo test -p opti-core --test real_release -- --ignored --nocapture
 
 ## Notes
 
-- Do not use OptiScaler in online games with anti-cheat.
+- Do not use OptiScaler in online games with anti-cheat. The detection here
+  covers what ships on disk; it cannot see server-side systems such as VAC.
+- Anti-cheat signatures come from SteamDB's
+  [FileDetectionRuleSets](https://github.com/SteamDatabase/FileDetectionRuleSets).
 - Installing into `Program Files` or an Xbox `Content` directory can need
   elevated permissions; the app reports the failure rather than escalating.
