@@ -50,8 +50,9 @@ impl fmt::Display for GpuInfo {
     }
 }
 
-#[cfg_attr(not(any(target_os = "windows", target_os = "linux")), allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 /// Maps a PCI vendor id (as sysfs reports it, e.g. `0x10de`) to a vendor.
+/// Only the Linux detector reads PCI ids.
 fn vendor_from_pci_id(id: &str) -> Option<Vendor> {
     match id.trim() {
         "0x10de" => Some(Vendor::Nvidia),
@@ -61,8 +62,9 @@ fn vendor_from_pci_id(id: &str) -> Option<Vendor> {
     }
 }
 
-#[cfg_attr(not(any(target_os = "windows", target_os = "linux")), allow(dead_code))]
-/// Classifies a display adapter's marketing name.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+/// Classifies a display adapter's marketing name. Only the Windows detector
+/// sees marketing names.
 fn vendor_from_name(name: &str) -> Option<Vendor> {
     let lower = name.to_lowercase();
     if lower.contains("nvidia") || lower.contains("geforce") || lower.contains("quadro") {
