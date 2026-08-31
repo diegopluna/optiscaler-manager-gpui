@@ -243,12 +243,12 @@ impl gpui::Render for GameDetail {
         v_flex()
             .id("game-detail")
             .size_full()
-            .gap_4()
+            .gap(px(14.))
             .pr_2()
             .pb_4()
             .child(
                 h_flex()
-                    .gap_4()
+                    .gap_5()
                     .items_start()
                     .child(
                         div()
@@ -264,8 +264,12 @@ impl gpui::Render for GameDetail {
                     )
                     .child(
                         v_flex()
-                            .gap_1()
+                            .gap_1p5()
                             .flex_1()
+                            // Match the cover's height so the action row can
+                            // sit flush with its bottom edge, per the canvas.
+                            .h(px(254.))
+                            .pt_1()
                             .child(
                                 div()
                                     .text_size(px(28.))
@@ -321,10 +325,10 @@ impl gpui::Render for GameDetail {
                                     .text_color(cx.theme().muted_foreground)
                                     .child(status_detail),
                             )
+                            .child(div().flex_1())
                             .child(
                                 h_flex()
                                     .gap_2()
-                                    .pt_3()
                                     .child(
                                         Button::new("install")
                                             .primary()
@@ -399,14 +403,18 @@ impl gpui::Render for GameDetail {
                 crate::views::ui::section("Installation", cx)
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap_2p5()
                             .items_center()
                             .child(flabel("Version"))
-                            .children(
-                                self.version_select
-                                    .as_ref()
-                                    .map(|state| Select::new(state).small().w(px(220.))),
-                            )
+                            .children(self.version_select.as_ref().map(|state| {
+                                // Select's own wrapper is size_full, which
+                                // would stretch across the row and shove the
+                                // release date to the far edge; box it in.
+                                div()
+                                    .flex_none()
+                                    .w(px(220.))
+                                    .child(Select::new(state).small())
+                            }))
                             .when(!selected_published.is_empty(), |this| {
                                 this.child(
                                     div()
@@ -419,7 +427,7 @@ impl gpui::Render for GameDetail {
                     .when(!selected_notes.is_empty(), |this| {
                         this.child(
                             h_flex()
-                                .gap_2()
+                                .gap_2p5()
                                 .items_start()
                                 .child(flabel("What's new").pt_2())
                                 .child(
@@ -427,7 +435,7 @@ impl gpui::Render for GameDetail {
                                         .id("changelog")
                                         .p_3()
                                         .gap_1()
-                                        .max_h(px(170.))
+                                        .max_h(px(120.))
                                         .flex_1()
                                         .overflow_hidden()
                                         .rounded(px(10.))
@@ -491,7 +499,7 @@ impl gpui::Render for GameDetail {
                     })
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap_2p5()
                             .items_start()
                             .child(flabel("Load as").pt_1())
                             .child(
@@ -535,7 +543,7 @@ impl gpui::Render for GameDetail {
                     )
                     .children(self.dir_input.as_ref().map(|input| {
                         h_flex()
-                            .gap_2()
+                            .gap_2p5()
                             .items_center()
                             .child(flabel("Directory"))
                             .child(Input::new(input).small().flex_1())

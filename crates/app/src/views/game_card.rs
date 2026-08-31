@@ -11,7 +11,7 @@ use crate::app_state::GameStatus;
 pub const CARD_WIDTH: f32 = 180.;
 pub const COVER_HEIGHT: f32 = 260.;
 pub const CARD_HEIGHT: f32 = COVER_HEIGHT + 46.;
-pub const CARD_GAP: f32 = 16.;
+pub const CARD_GAP: f32 = 18.;
 
 /// A stable, pleasant colour per game, used for the placeholder cover so the
 /// grid still reads as a catalog before artwork has been fetched.
@@ -131,7 +131,7 @@ pub fn game_card(
         .group("game-card")
         .w(px(CARD_WIDTH))
         .h(px(CARD_HEIGHT))
-        .gap_1()
+        .gap_2()
         .cursor_pointer()
         .child(
             div()
@@ -168,6 +168,7 @@ pub fn game_card(
         .child(
             v_flex()
                 .gap_0()
+                .px(px(2.))
                 .child(
                     div()
                         .text_sm()

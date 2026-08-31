@@ -133,133 +133,102 @@ impl Render for SettingsView {
                 let busy = update.is_busy();
                 crate::views::ui::section("Updates", cx)
                     .child(
-                        v_flex()
-                            .gap_0p5()
+                        h_flex()
+                            .gap_3()
+                            .items_center()
+                            .justify_between()
                             .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child(format!(
-                                        "Version {}",
-                                        opti_core::update::CURRENT_VERSION
+                                v_flex()
+                                    .gap_0p5()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                                            .child(format!(
+                                                "Version {}",
+                                                opti_core::update::CURRENT_VERSION
+                                            )),
+                                    )
+                                    .child(crate::views::ui::hint(
+                                        "Updates install silently; the app restarts itself.",
+                                        cx,
                                     )),
                             )
-                            .child(crate::views::ui::hint(
-                                "Updates install silently; the app restarts itself.",
-                                cx,
-                            )),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
                             .child(
-                                Button::new("check-updates")
-                                    .small()
-                                    .outline()
-                                    .label(match &update {
-                                        UpdateState::Checking => "Checking…",
-                                        UpdateState::Downloading => "Downloading…",
-                                        UpdateState::Installing => "Restarting…",
-                                        UpdateState::UpToDate => "Check again",
-                                        _ => "Check for updates",
-                                    })
-                                    .disabled(busy)
-                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                        this.state
-                                            .update(cx, |state, cx| state.check_for_updates(cx));
-                                    })),
-                            )
-                            .when_some(
-                                match &update {
-                                    UpdateState::Available(info) => Some(info.tag.clone()),
-                                    _ => None,
-                                },
-                                |this, tag| {
-                                    this.child(
-                                        Button::new("apply-update")
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .when_some(
+                                        match &update {
+                                            UpdateState::Available(info) => Some(info.tag.clone()),
+                                            _ => None,
+                                        },
+                                        |this, tag| {
+                                            this.child(
+                                                Button::new("apply-update")
+                                                    .small()
+                                                    .primary()
+                                                    .label(format!("Update to {tag}"))
+                                                    .disabled(busy)
+                                                    .on_click(cx.listener(
+                                                        |this, _: &ClickEvent, _, cx| {
+                                                            this.state.update(cx, |state, cx| {
+                                                                state.apply_update(cx)
+                                                            });
+                                                        },
+                                                    )),
+                                            )
+                                        },
+                                    )
+                                    .child(
+                                        Button::new("check-updates")
                                             .small()
-                                            .primary()
-                                            .label(format!("Update to {tag}"))
+                                            .outline()
+                                            .label(match &update {
+                                                UpdateState::Checking => "Checking…",
+                                                UpdateState::Downloading => "Downloading…",
+                                                UpdateState::Installing => "Restarting…",
+                                                UpdateState::UpToDate => "Check again",
+                                                _ => "Check for updates",
+                                            })
                                             .disabled(busy)
                                             .on_click(cx.listener(
                                                 |this, _: &ClickEvent, _, cx| {
                                                     this.state.update(cx, |state, cx| {
-                                                        state.apply_update(cx)
+                                                        state.check_for_updates(cx)
                                                     });
                                                 },
                                             )),
-                                    )
-                                },
-                            )
-                            .when_some(
-                                match &update {
-                                    UpdateState::UpToDate => {
-                                        Some(("Up to date".to_string(), false))
-                                    }
-                                    UpdateState::Installing => Some((
-                                        "Updating — the app will close and reopen itself"
-                                            .to_string(),
-                                        false,
-                                    )),
-                                    UpdateState::RestartRequired => Some((
-                                        "Updated — restart the app to finish".to_string(),
-                                        false,
-                                    )),
-                                    UpdateState::Failed(err) => Some((err.clone(), true)),
-                                    _ => None,
-                                },
-                                |this, (message, is_error)| {
-                                    this.child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(if is_error {
-                                                cx.theme().danger
-                                            } else {
-                                                cx.theme().success
-                                            })
-                                            .child(message),
-                                    )
-                                },
+                                    ),
                             ),
+                    )
+                    .when_some(
+                        match &update {
+                            UpdateState::UpToDate => Some(("Up to date".to_string(), false)),
+                            UpdateState::Installing => Some((
+                                "Updating — the app will close and reopen itself".to_string(),
+                                false,
+                            )),
+                            UpdateState::RestartRequired => {
+                                Some(("Updated — restart the app to finish".to_string(), false))
+                            }
+                            UpdateState::Failed(err) => Some((err.clone(), true)),
+                            _ => None,
+                        },
+                        |this, (message, is_error)| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(if is_error {
+                                        cx.theme().danger
+                                    } else {
+                                        cx.theme().success
+                                    })
+                                    .child(message),
+                            )
+                        },
                     )
             })
-            .child(
-                crate::views::ui::section("Artwork", cx)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(
-                                "Steam games get their cover art from Steam directly. \
-                                 Epic and Xbox games need a free SteamGridDB key; without \
-                                 one they fall back to a generated placeholder.",
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(Input::new(&self.key_input).w(px(360.)))
-                            .child(
-                                Button::new("save-key")
-                                    .primary()
-                                    .small()
-                                    .label("Save")
-                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                        this.save_key(cx);
-                                    })),
-                            )
-                            .when(self.saved, |this| {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().success)
-                                        .child("Saved — fetching artwork"),
-                                )
-                            }),
-                    ),
-            )
             .child({
                 let manual_games = self.state.read(cx).settings.manual_games.clone();
                 let scan_folders = self.state.read(cx).settings.scan_folders.clone();
@@ -361,6 +330,42 @@ impl Render for SettingsView {
                         )
                     }))
             })
+            .child(
+                crate::views::ui::section("Artwork", cx)
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(
+                                "Steam games get their cover art from Steam directly. \
+                                 Epic and Xbox games need a free SteamGridDB key; without \
+                                 one they fall back to a generated placeholder.",
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(Input::new(&self.key_input).w(px(360.)))
+                            .child(
+                                Button::new("save-key")
+                                    .primary()
+                                    .small()
+                                    .label("Save")
+                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                        this.save_key(cx);
+                                    })),
+                            )
+                            .when(self.saved, |this| {
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().success)
+                                        .child("Saved — fetching artwork"),
+                                )
+                            }),
+                    ),
+            )
             .child({
                 let current = self.state.read(cx).settings.theme.clone();
                 let choice = |label: &'static str, value: Option<&'static str>| {
@@ -397,28 +402,25 @@ impl Render for SettingsView {
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
+                            .child(format!(
+                                "{} · {game_count} games detected",
+                                match &self.state.read(cx).gpu {
+                                    Some(gpu) => format!("GPU: {gpu}"),
+                                    None => "GPU: not detected".to_string(),
+                                }
+                            )),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(crate::theme::tokens::faint_text())
                             .child(format!("Settings and install records: {config_dir}")),
                     )
                     .child(
                         div()
                             .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                            .text_color(crate::theme::tokens::faint_text())
                             .child(format!("Artwork and downloads: {cache_dir}")),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("{game_count} games detected")),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(match &self.state.read(cx).gpu {
-                                Some(gpu) => format!("GPU: {gpu}"),
-                                None => "GPU: not detected".to_string(),
-                            }),
                     ),
             )
             .overflow_y_scrollbar()

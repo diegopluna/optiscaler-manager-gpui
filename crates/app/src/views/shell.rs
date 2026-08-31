@@ -187,8 +187,13 @@ impl Render for Shell {
                     .footer(
                         SidebarFooter::new().child(
                             v_flex()
-                                .gap_0p5()
+                                .gap_1()
                                 .w_full()
+                                .p_2p5()
+                                .rounded(px(8.))
+                                .bg(crate::theme::tokens::card_bg())
+                                .border_1()
+                                .border_color(crate::theme::tokens::card_border())
                                 .child(
                                     div()
                                         .text_xs()
@@ -197,13 +202,24 @@ impl Render for Shell {
                                 )
                                 .when(update_available, |this| {
                                     this.child(
-                                        div()
+                                        h_flex()
                                             .id("update-note")
-                                            .text_xs()
-                                            .text_color(cx.theme().primary)
+                                            .gap_1p5()
+                                            .items_center()
                                             .cursor_pointer()
-                                            .hover(|this| this.text_color(cx.theme().primary_hover))
-                                            .child("Update available — see Settings")
+                                            .child(
+                                                div()
+                                                    .w(px(6.))
+                                                    .h(px(6.))
+                                                    .rounded(px(3.))
+                                                    .bg(cx.theme().primary),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(cx.theme().link)
+                                                    .child("Update available"),
+                                            )
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.route = Route::Settings;
                                                 cx.notify();
