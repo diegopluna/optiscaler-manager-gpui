@@ -15,6 +15,11 @@ use crate::views::shell::Shell;
 fn main() {
     env_logger::init();
 
+    // The silent updater's Restart Manager handoff only reopens processes
+    // that asked for it, so opt in before anything else.
+    #[cfg(target_os = "windows")]
+    opti_core::update::register_for_restart();
+
     let app = Application::new().with_assets(gpui_component_assets::Assets);
 
     app.run(move |cx| {

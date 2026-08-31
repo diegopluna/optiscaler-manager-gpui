@@ -176,6 +176,32 @@ fn download(info: &UpdateInfo, progress: &dyn Fn(u64, u64)) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Opts this process into being relaunched by Windows Restart Manager.
+///
+/// The silent installer closes the app through Restart Manager and asks it
+/// to restart what it closed, but Restart Manager only relaunches processes
+/// that registered with `RegisterApplicationRestart` — without this call an
+/// update leaves the app closed. Crash, hang and reboot restarts stay off;
+/// only the installer (patch) path may bring the app back.
+#[cfg(target_os = "windows")]
+pub fn register_for_restart() {
+    #[allow(non_snake_case)]
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn RegisterApplicationRestart(pwz_commandline: *const u16, dw_flags: u32) -> i32;
+    }
+    const RESTART_NO_CRASH: u32 = 1;
+    const RESTART_NO_HANG: u32 = 2;
+    const RESTART_NO_REBOOT: u32 = 8;
+    // A null command line relaunches the executable with no arguments.
+    unsafe {
+        RegisterApplicationRestart(
+            std::ptr::null(),
+            RESTART_NO_CRASH | RESTART_NO_HANG | RESTART_NO_REBOOT,
+        );
+    }
+}
+
 /// Downloads and applies an update. `progress` receives
 /// `(bytes_so_far, total_bytes)`.
 pub fn apply(info: &UpdateInfo, progress: impl Fn(u64, u64)) -> Result<Applied> {
@@ -185,7 +211,8 @@ pub fn apply(info: &UpdateInfo, progress: impl Fn(u64, u64)) -> Result<Applied> 
     {
         // Run the installer with no UI at all. /CLOSEAPPLICATIONS lets it
         // shut this app down through Restart Manager, /RESTARTAPPLICATIONS
-        // brings it back once the files are swapped, and the installer keeps
+        // brings it back once the files are swapped (which needs the
+        // register_for_restart call made at startup), and the installer keeps
         // the uninstall registry entries correct — so the update feels like a
         // quiet restart rather than a setup wizard. The app must NOT quit on
         // its own here: Restart Manager only restarts what it closed itself.
