@@ -154,7 +154,7 @@ impl Render for Shell {
                             .child(crate::views::ui::logo_mark(34.))
                             .child(
                                 v_flex()
-                                    .gap_0()
+                                    .gap_0p5()
                                     .text_sm()
                                     .flex_1()
                                     .overflow_hidden()

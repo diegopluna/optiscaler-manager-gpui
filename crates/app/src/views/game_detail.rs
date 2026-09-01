@@ -434,7 +434,7 @@ impl gpui::Render for GameDetail {
                                     v_flex()
                                         .id("changelog")
                                         .p_3()
-                                        .gap_1()
+                                        .gap_1p5()
                                         .max_h(px(120.))
                                         .flex_1()
                                         .overflow_hidden()
@@ -504,7 +504,7 @@ impl gpui::Render for GameDetail {
                             .child(flabel("Load as").pt_1())
                             .child(
                                 v_flex()
-                                    .gap_1()
+                                    .gap_1p5()
                                     .flex_1()
                                     .child(
                                         ButtonGroup::new("proxy-name")
@@ -580,7 +580,7 @@ impl gpui::Render for GameDetail {
                                 v_flex()
                                     .flex_1()
                                     .min_w_0()
-                                    .gap_1()
+                                    .gap_1p5()
                                     .p_3()
                                     .rounded(px(10.))
                                     .border_1()
@@ -650,7 +650,7 @@ impl gpui::Render for GameDetail {
                                 v_flex()
                                     .flex_1()
                                     .min_w_0()
-                                    .gap_1()
+                                    .gap_1p5()
                                     .p_3()
                                     .rounded(px(10.))
                                     .border_1()
@@ -749,7 +749,7 @@ impl gpui::Render for GameDetail {
                                 .bg(crate::theme::tokens::inner_bg())
                                 .child(
                                     v_flex()
-                                        .gap_0p5()
+                                        .gap_1()
                                         .child(
                                             div()
                                                 .text_sm()
@@ -789,7 +789,7 @@ impl gpui::Render for GameDetail {
                         let can_add = is_managed && busy.is_none() && !optipatcher_installed;
                         this.child(
                             v_flex()
-                                .gap_1()
+                                .gap_1p5()
                                 .p_3()
                                 .rounded(px(10.))
                                 .border_1()
@@ -802,7 +802,7 @@ impl gpui::Render for GameDetail {
                                         .justify_between()
                                         .child(
                                             v_flex()
-                                                .gap_0p5()
+                                                .gap_1()
                                                 .child(
                                                     div()
                                                         .text_sm()
@@ -857,7 +857,7 @@ impl gpui::Render for GameDetail {
             .when_some(conflicts, |this, files| {
                 this.child(
                     v_flex()
-                        .gap_1()
+                        .gap_1p5()
                         .p_2()
                         .rounded(cx.theme().radius)
                         .border_1()

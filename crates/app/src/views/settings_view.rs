@@ -119,7 +119,7 @@ impl Render for SettingsView {
         v_flex()
             .id("settings-page")
             .size_full()
-            .gap_3()
+            .gap(px(14.))
             .pr_2()
             .pb_4()
             .child(
@@ -139,7 +139,7 @@ impl Render for SettingsView {
                             .justify_between()
                             .child(
                                 v_flex()
-                                    .gap_0p5()
+                                    .gap_1()
                                     .child(
                                         div()
                                             .text_sm()

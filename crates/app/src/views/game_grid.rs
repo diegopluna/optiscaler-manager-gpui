@@ -177,7 +177,7 @@ impl Render for GameGrid {
                     .justify_between()
                     .child(
                         v_flex()
-                            .gap_0()
+                            .gap_1()
                             .child(
                                 div()
                                     .text_lg()

@@ -10,7 +10,7 @@ pub fn section(title: impl Into<String>, cx: &App) -> Div {
     let _ = cx;
     v_flex()
         .w_full()
-        .gap_2p5()
+        .gap_3()
         .p_4()
         .rounded(px(12.))
         .border_1()
