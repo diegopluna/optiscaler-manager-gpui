@@ -116,22 +116,26 @@ impl Render for SettingsView {
             .unwrap_or_else(|err| format!("unavailable: {err}"));
         let game_count = self.state.read(cx).games.len();
 
-        v_flex()
+        div()
             .id("settings-page")
             .size_full()
-            .gap(px(14.))
-            .pr_2()
-            .pb_4()
+            .overflow_y_scrollbar()
             .child(
-                div()
-                    .text_lg()
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child("Settings"),
-            )
-            .child({
-                let update = self.state.read(cx).update.clone();
-                let busy = update.is_busy();
-                crate::views::ui::section("Updates", cx)
+                v_flex()
+                    .w_full()
+                    .gap(px(14.))
+                    .pr_2()
+                    .pb_4()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("Settings"),
+                    )
+                    .child({
+                        let update = self.state.read(cx).update.clone();
+                        let busy = update.is_busy();
+                        crate::views::ui::section("Updates", cx)
                     .child(
                         h_flex()
                             .gap_3()
@@ -228,172 +232,184 @@ impl Render for SettingsView {
                             )
                         },
                     )
-            })
-            .child({
-                let manual_games = self.state.read(cx).settings.manual_games.clone();
-                let scan_folders = self.state.read(cx).settings.scan_folders.clone();
-                let games = self.state.read(cx).games.clone();
-                crate::views::ui::section("Game locations", cx)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                    })
+                    .child({
+                        let manual_games = self.state.read(cx).settings.manual_games.clone();
+                        let scan_folders = self.state.read(cx).settings.scan_folders.clone();
+                        let games = self.state.read(cx).games.clone();
+                        crate::views::ui::section("Game locations", cx)
                             .child(
-                                "Steam, Epic and Xbox are found automatically. Anything \
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(
+                                        "Steam, Epic and Xbox are found automatically. Anything \
                                  else — GOG, EA, Ubisoft, DRM-free installs — can be added \
                                  here: single game folders, or library folders whose \
                                  subfolders are all games.",
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(Input::new(&self.location_input).small().flex_1())
-                            .child(
-                                Button::new("add-game")
-                                    .small()
-                                    .outline()
-                                    .label("Add game")
-                                    .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                                        let input = this.location_input.clone();
-                                        this.add_location(
-                                            &input,
-                                            |state, dir, cx| state.add_manual_game(dir, cx),
-                                            window,
-                                            cx,
-                                        );
-                                    })),
+                                    ),
                             )
                             .child(
-                                Button::new("add-folder")
-                                    .small()
-                                    .outline()
-                                    .label("Add scan folder")
-                                    .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                                        let input = this.location_input.clone();
-                                        this.add_location(
-                                            &input,
-                                            |state, dir, cx| state.add_scan_folder(dir, cx),
-                                            window,
-                                            cx,
-                                        );
-                                    })),
-                            ),
-                    )
-                    .when_some(self.location_error.clone(), |this, message| {
-                        this.child(div().text_xs().text_color(cx.theme().danger).child(message))
-                    })
-                    .children(scan_folders.iter().enumerate().map(|(ix, dir)| {
-                        let count = games
-                            .iter()
-                            .filter(|game| {
-                                game.store == opti_core::Store::Manual
-                                    && game.install_dir.starts_with(dir)
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(Input::new(&self.location_input).small().flex_1())
+                                    .child(
+                                        Button::new("add-game")
+                                            .small()
+                                            .outline()
+                                            .label("Add game")
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, window, cx| {
+                                                    let input = this.location_input.clone();
+                                                    this.add_location(
+                                                        &input,
+                                                        |state, dir, cx| {
+                                                            state.add_manual_game(dir, cx)
+                                                        },
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("add-folder")
+                                            .small()
+                                            .outline()
+                                            .label("Add scan folder")
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, window, cx| {
+                                                    let input = this.location_input.clone();
+                                                    this.add_location(
+                                                        &input,
+                                                        |state, dir, cx| {
+                                                            state.add_scan_folder(dir, cx)
+                                                        },
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            )),
+                                    ),
+                            )
+                            .when_some(self.location_error.clone(), |this, message| {
+                                this.child(
+                                    div().text_xs().text_color(cx.theme().danger).child(message),
+                                )
                             })
-                            .count();
-                        let detail = match count {
-                            1 => "scan folder · 1 game".to_string(),
-                            n => format!("scan folder · {n} games"),
-                        };
-                        location_row(("rm-folder", ix), dir, detail, cx).child(
-                            Button::new(("rm-folder-btn", ix))
-                                .small()
-                                .ghost()
-                                .label("Remove")
-                                .on_click({
-                                    let for_remove = dir.clone();
-                                    cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                        let dir = for_remove.clone();
-                                        this.state.update(cx, |state, cx| {
-                                            state.remove_scan_folder(&dir, cx)
-                                        });
+                            .children(scan_folders.iter().enumerate().map(|(ix, dir)| {
+                                let count = games
+                                    .iter()
+                                    .filter(|game| {
+                                        game.store == opti_core::Store::Manual
+                                            && game.install_dir.starts_with(dir)
                                     })
-                                }),
-                        )
-                    }))
-                    .children(manual_games.iter().enumerate().map(|(ix, dir)| {
-                        location_row(("rm-game", ix), dir, "game".to_string(), cx).child(
-                            Button::new(("rm-game-btn", ix))
-                                .small()
-                                .ghost()
-                                .label("Remove")
-                                .on_click({
-                                    let for_remove = dir.clone();
-                                    cx.listener(move |this, _: &ClickEvent, _, cx| {
-                                        let dir = for_remove.clone();
-                                        this.state.update(cx, |state, cx| {
-                                            state.remove_manual_game(&dir, cx)
-                                        });
-                                    })
-                                }),
-                        )
-                    }))
-            })
-            .child(
-                crate::views::ui::section("Artwork", cx)
+                                    .count();
+                                let detail = match count {
+                                    1 => "scan folder · 1 game".to_string(),
+                                    n => format!("scan folder · {n} games"),
+                                };
+                                location_row(("rm-folder", ix), dir, detail, cx).child(
+                                    Button::new(("rm-folder-btn", ix))
+                                        .small()
+                                        .ghost()
+                                        .label("Remove")
+                                        .on_click({
+                                            let for_remove = dir.clone();
+                                            cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                                let dir = for_remove.clone();
+                                                this.state.update(cx, |state, cx| {
+                                                    state.remove_scan_folder(&dir, cx)
+                                                });
+                                            })
+                                        }),
+                                )
+                            }))
+                            .children(manual_games.iter().enumerate().map(|(ix, dir)| {
+                                location_row(("rm-game", ix), dir, "game".to_string(), cx).child(
+                                    Button::new(("rm-game-btn", ix))
+                                        .small()
+                                        .ghost()
+                                        .label("Remove")
+                                        .on_click({
+                                            let for_remove = dir.clone();
+                                            cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                                let dir = for_remove.clone();
+                                                this.state.update(cx, |state, cx| {
+                                                    state.remove_manual_game(&dir, cx)
+                                                });
+                                            })
+                                        }),
+                                )
+                            }))
+                    })
                     .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
+                        crate::views::ui::section("Artwork", cx)
                             .child(
-                                "Steam games get their cover art from Steam directly. \
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(
+                                        "Steam games get their cover art from Steam directly. \
                                  Epic and Xbox games need a free SteamGridDB key; without \
                                  one they fall back to a generated placeholder.",
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(Input::new(&self.key_input).w(px(360.)))
+                                    .child(
+                                        Button::new("save-key")
+                                            .primary()
+                                            .small()
+                                            .label("Save")
+                                            .on_click(cx.listener(
+                                                |this, _: &ClickEvent, _, cx| {
+                                                    this.save_key(cx);
+                                                },
+                                            )),
+                                    )
+                                    .when(self.saved, |this| {
+                                        this.child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().success)
+                                                .child("Saved — fetching artwork"),
+                                        )
+                                    }),
                             ),
                     )
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(Input::new(&self.key_input).w(px(360.)))
+                        crate::views::ui::section("About", cx)
                             .child(
-                                Button::new("save-key")
-                                    .primary()
-                                    .small()
-                                    .label("Save")
-                                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                        this.save_key(cx);
-                                    })),
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(format!(
+                                        "{} · {game_count} games detected",
+                                        match &self.state.read(cx).gpu {
+                                            Some(gpu) => format!("GPU: {gpu}"),
+                                            None => "GPU: not detected".to_string(),
+                                        }
+                                    )),
                             )
-                            .when(self.saved, |this| {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().success)
-                                        .child("Saved — fetching artwork"),
-                                )
-                            }),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(crate::theme::tokens::faint_text())
+                                    .child(format!("Settings and install records: {config_dir}")),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(crate::theme::tokens::faint_text())
+                                    .child(format!("Artwork and downloads: {cache_dir}")),
+                            ),
                     ),
             )
-            .child(
-                crate::views::ui::section("About", cx)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!(
-                                "{} · {game_count} games detected",
-                                match &self.state.read(cx).gpu {
-                                    Some(gpu) => format!("GPU: {gpu}"),
-                                    None => "GPU: not detected".to_string(),
-                                }
-                            )),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(crate::theme::tokens::faint_text())
-                            .child(format!("Settings and install records: {config_dir}")),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(crate::theme::tokens::faint_text())
-                            .child(format!("Artwork and downloads: {cache_dir}")),
-                    ),
-            )
-            .overflow_y_scrollbar()
     }
 }
 

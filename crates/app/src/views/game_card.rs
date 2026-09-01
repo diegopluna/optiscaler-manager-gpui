@@ -66,10 +66,13 @@ pub fn game_card(
         Some(path) => div()
             .size_full()
             .overflow_hidden()
-            .child(img(path.to_path_buf()).size_full())
+            // Rounded on the image itself: the overflow clip is rectangular,
+            // so a square image would paint over the card's rounded corners.
+            .child(img(path.to_path_buf()).size_full().rounded(px(9.)))
             .into_any_element(),
         None => v_flex()
             .size_full()
+            .rounded(px(9.))
             .items_center()
             .justify_center()
             .bg(cover_color(&game.title))

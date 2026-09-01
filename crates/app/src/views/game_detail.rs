@@ -240,12 +240,16 @@ impl gpui::Render for GameDetail {
             .position(|name| *name == proxy_name)
             .unwrap_or(0);
 
-        v_flex()
+        div()
             .id("game-detail")
             .size_full()
-            .gap(px(14.))
-            .pr_2()
-            .pb_4()
+            .overflow_y_scrollbar()
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap(px(14.))
+                    .pr_2()
+                    .pb_4()
             .child(
                 h_flex()
                     .gap_5()
@@ -260,7 +264,12 @@ impl gpui::Render for GameDetail {
                             .border_1()
                             .border_color(crate::theme::tokens::cover_border())
                             .shadow_lg()
-                            .when_some(artwork, |this, path| this.child(img(path).size_full())),
+                            .when_some(artwork, |this, path| {
+                                // The overflow clip is rectangular, so round
+                                // the image itself or its corners paint over
+                                // the container's rounded border.
+                                this.child(img(path).size_full().rounded(px(11.)))
+                            }),
                     )
                     .child(
                         v_flex()
@@ -431,17 +440,22 @@ impl gpui::Render for GameDetail {
                                 .items_start()
                                 .child(flabel("What's new").pt_2())
                                 .child(
-                                    v_flex()
+                                    div()
                                         .id("changelog")
                                         .p_3()
-                                        .gap_1p5()
                                         .max_h(px(120.))
                                         .flex_1()
+                                        .min_w_0()
                                         .overflow_hidden()
                                         .rounded(px(10.))
                                         .border_1()
                                         .border_color(crate::theme::tokens::card_border())
                                         .bg(crate::theme::tokens::inner_bg())
+                                        .overflow_y_scrollbar()
+                                        .child(
+                                        v_flex()
+                                        .w_full()
+                                        .gap_1p5()
                                         .child(
                                             div()
                                                 .text_sm()
@@ -492,8 +506,8 @@ impl gpui::Render for GameDetail {
                                                     div().h(px(6.)).into_any_element()
                                                 }
                                             }
-                                        }))
-                                        .overflow_y_scrollbar(),
+                                        })),
+                                        ),
                                 ),
                         )
                     })
@@ -933,8 +947,8 @@ impl gpui::Render for GameDetail {
                         "OptiScaler will be loaded as {proxy_for_click}. Configure it from \
                          its own overlay in game — press Insert once the game is running."
                     )),
+            ),
             )
-            .overflow_y_scrollbar()
             .into_any_element()
     }
 }
