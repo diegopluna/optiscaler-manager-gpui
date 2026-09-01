@@ -3,7 +3,7 @@ use gpui::{
     Render, Styled, Subscription, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, Icon, IconName, Selectable, Sizable,
+    ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants},
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -366,36 +366,6 @@ impl Render for SettingsView {
                             }),
                     ),
             )
-            .child({
-                let current = self.state.read(cx).settings.theme.clone();
-                let choice = |label: &'static str, value: Option<&'static str>| {
-                    let selected = current.as_deref() == value;
-                    Button::new(label)
-                        .small()
-                        .ghost()
-                        .selected(selected)
-                        .label(label)
-                        .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                            this.state.update(cx, |state, cx| {
-                                state.set_theme(value.map(str::to_string), cx)
-                            });
-                            let mode = match value {
-                                Some("light") => gpui_component::ThemeMode::Light,
-                                Some("dark") => gpui_component::ThemeMode::Dark,
-                                _ => gpui_component::ThemeMode::from(window.appearance()),
-                            };
-                            gpui_component::Theme::change(mode, Some(window), cx);
-                            crate::theme::apply(cx);
-                        }))
-                };
-                crate::views::ui::section("Appearance", cx).child(
-                    h_flex()
-                        .gap_1()
-                        .child(choice("System", None))
-                        .child(choice("Light", Some("light")))
-                        .child(choice("Dark", Some("dark"))),
-                )
-            })
             .child(
                 crate::views::ui::section("About", cx)
                     .child(

@@ -25,17 +25,10 @@ fn main() {
     app.run(move |cx| {
         gpui_component::init(cx);
 
-        // Apply the saved theme before the window opens; absent means follow
-        // the system appearance, which is the default behaviour.
-        match opti_core::Settings::load().theme.as_deref() {
-            Some("light") => {
-                gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx)
-            }
-            Some("dark") => {
-                gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx)
-            }
-            _ => {}
-        }
+        // The design is dark-only — the palette's surfaces and text tokens
+        // have no light counterparts — so pin dark regardless of the OS
+        // appearance the init sync picked up.
+        gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
         theme::apply(cx);
 
         cx.spawn(async move |cx| {

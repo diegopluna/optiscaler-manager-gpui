@@ -244,13 +244,6 @@ impl AppState {
         self.rescan(cx);
     }
 
-    /// Saves the theme choice; the caller applies it to the window.
-    pub fn set_theme(&mut self, theme: Option<String>, cx: &mut Context<Self>) {
-        self.settings.theme = theme;
-        self.save_settings();
-        cx.notify();
-    }
-
     pub fn set_steamgriddb_key(&mut self, key: Option<String>, cx: &mut Context<Self>) {
         self.settings.steamgriddb_key = key;
         self.save_settings();
